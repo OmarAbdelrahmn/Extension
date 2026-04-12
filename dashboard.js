@@ -1,13 +1,12 @@
 'use strict';
 
 /* ═══════════════════════════════════════════════════════
-   RIDER LIVE OPS v3.2 — DASHBOARD JS
-   Changes:
-   - Status read directly from API employee.status field
-   - Light / Dark theme toggle (persisted to localStorage)
-   - Arabic / English language toggle (persisted)
-   - Map: dynamic Leaflet loader with local + CDN fallback
-   - Late filter uses isLate() helper (not status override)
+   RIDER LIVE OPS v3.3 — DASHBOARD JS
+   Fixes:
+   - isLate() now checks BOTH api status==='late' AND late_seconds>0
+   - computeStatsFromRiders: no double-counting of late riders
+   - Detail tabs made sticky (via .detail-sticky-top wrapper in HTML)
+   - Leaflet loaded from libs/ folder (web_accessible_resources)
    ═══════════════════════════════════════════════════════ */
 
 const API      = 'https://sa.me.logisticsbackoffice.com/api';
@@ -82,7 +81,7 @@ const STRINGS = {
     map_without_orders:'بدون طلب', map_late_legend:'متأخر',
     map_total:'إجمالي على الخريطة:', map_driver:'سائق',
     map_error:'تعذر تحميل مكتبة الخرائط',
-    map_error_sub:'حمّل ملفات Leaflet محلياً في مجلد libs/ أو تحقق من الاتصال',
+    map_error_sub:'ضع ملفات Leaflet في مجلد libs/ داخل الإضافة (leaflet.js و leaflet.css)',
     loading:'جاري التحميل...', no_data:'لا يوجد سائقون مطابقون',
     load_fail:'⚠ فشل التحميل', login_hint:'تأكد من تسجيل الدخول في المنصة',
     has_order:'🟢 طلب', no_order:'⚪',
@@ -152,7 +151,7 @@ const STRINGS = {
     map_without_orders:'No Order', map_late_legend:'Late',
     map_total:'Total on map:', map_driver:'riders',
     map_error:'Failed to load map library',
-    map_error_sub:'Copy Leaflet files locally into libs/ or check your connection',
+    map_error_sub:'Place Leaflet files inside libs/ folder of the extension (leaflet.js and leaflet.css)',
     loading:'Loading...', no_data:'No matching riders',
     load_fail:'⚠ Load Failed', login_hint:'Make sure you are logged in to the platform',
     has_order:'🟢 Order', no_order:'⚪',
@@ -198,18 +197,15 @@ function applyLanguage() {
   document.documentElement.dir  = isAr ? 'rtl' : 'ltr';
   document.documentElement.lang = currentLang;
 
-  // Static data-i18n text nodes
   document.querySelectorAll('[data-i18n]').forEach(el => {
     const key = el.dataset.i18n;
     el.textContent = t(key);
   });
 
-  // Placeholder attributes
   document.querySelectorAll('[data-i18n-ph]').forEach(el => {
     el.placeholder = t(el.dataset.i18nPh);
   });
 
-  // Sort options
   const so = document.getElementById('sortSelect');
   if (so) {
     so.options[0].text = t('sort_name');
@@ -221,9 +217,8 @@ function applyLanguage() {
 
   const langBtn = document.getElementById('btnLang');
   if (langBtn) langBtn.textContent = t('lang_toggle');
-  applyTheme(); // re-apply theme label text too
+  applyTheme();
 
-  // Re-render if data present
   if (allRiders.length) {
     applyFiltersAndSort();
     renderCompanyStats(computeStatsFromRiders(allRiders));
@@ -241,7 +236,6 @@ function toggleLang() {
 }
 
 // ── LABEL MAPS ─────────────────────────────────────────
-// Keys match the lowercase status strings returned by the API
 
 const STATUS_BADGE = {
   working:  'badge-working',
@@ -281,20 +275,24 @@ const VEHICLE_ICONS = {
 
 /**
  * Returns the raw status from the API (normalized to lowercase).
- * The API field employee.status is the single source of truth.
+ * This is the single source of truth for a rider's status.
  */
 function effectiveStatus(rider) {
   return (rider.status || 'offline').toLowerCase();
 }
 
 /**
- * True when the rider has accumulated late seconds.
- * Used ONLY for visual late indicators and the "late" filter tab.
- * Does NOT override effectiveStatus().
+ * TRUE when a rider is considered "late".
+ * Checks BOTH the API status field AND late_seconds > 0.
+ * Used for visual indicators, the late filter tab, and late badge.
+ *
+ * FIX: previously isLate only checked late_seconds, so riders whose
+ * API status was already "late" were double-counted in computeStatsFromRiders.
  */
 function isLate(rider) {
   if (!rider) return false;
-  return (rider.performance?.time_spent?.late_seconds || 0) > 0;
+  return effectiveStatus(rider) === 'late' ||
+         (rider.performance?.time_spent?.late_seconds || 0) > 0;
 }
 
 function hasActiveOrder(rider) {
@@ -420,10 +418,20 @@ async function fetchRiderShifts(id) {
 }
 
 // ── STATS FROM RIDERS ──────────────────────────────────
-
+/*
+  FIX: Previously stats.late was incremented TWICE:
+    1) effectiveStatus(r) === 'late'  → stats['late']++
+    2) isLate(r) (late_seconds > 0)  → stats.late++
+  Now: we only count a rider's API status in the status buckets
+  (working / starting / break / offline), and keep late as a
+  separate orthogonal counter via isLate().
+  A rider with status==='late' is still shown as late in the badge
+  because STATUS_BADGE['late'] exists.
+*/
 function computeStatsFromRiders(riders) {
   const stats = {
-    working: 0, starting: 0, break: 0, late: 0, offline: 0,
+    working: 0, starting: 0, break: 0, offline: 0,
+    late: 0,   // counted separately via isLate()
     withOrders: 0, withoutOrders: 0, total: riders.length,
     walletOverHard: 0, walletOverSoft: 0, walletOk: 0,
     totalCompleted: 0, byPoint: {}, vehicles: {},
@@ -431,17 +439,25 @@ function computeStatsFromRiders(riders) {
   };
 
   riders.forEach(r => {
-    // Use raw API status as single source of truth
     const st = effectiveStatus(r);
-    if (stats[st] !== undefined) stats[st]++;
 
-    // Late counter is separate (based on late_seconds)
+    // Count each rider in their API status bucket
+    // (working / starting / break / offline / late)
+    // Note: 'late' riders are NOT double-added below; isLate() handles the late counter.
+    if (st === 'working')  stats.working++;
+    else if (st === 'starting') stats.starting++;
+    else if (st === 'break')    stats.break++;
+    else if (st === 'offline')  stats.offline++;
+    // riders with status==='late' are not counted in the above buckets —
+    // they are only reflected in the late counter below.
+
+    // Late counter: covers status==='late' AND riders with late_seconds > 0
     if (isLate(r)) stats.late++;
 
     const hasOrd = hasActiveOrder(r);
     if (hasOrd) {
       stats.withOrders++;
-    } else if (['working', 'starting'].includes(st)) {
+    } else if (['working', 'starting', 'late'].includes(st)) {
       stats.withoutOrders++;
     }
 
@@ -461,10 +477,12 @@ function computeStatsFromRiders(riders) {
     }
     const pg = stats.byPoint[ptName];
     pg.total++;
-    if (pg[st] !== undefined) pg[st]++;
+    if (st === 'working')       pg.working++;
+    else if (st === 'starting') pg.starting++;
+    else if (st === 'break')    pg.break++;
     if (isLate(r)) pg.late++;
     if (hasOrd) pg.withOrders++;
-    else if (['working','starting'].includes(st)) pg.withoutOrders++;
+    else if (['working','starting','late'].includes(st)) pg.withoutOrders++;
 
     const vIcon = r.vehicle?.icon || 'Unknown';
     stats.vehicles[vIcon] = (stats.vehicles[vIcon] || 0) + 1;
@@ -486,6 +504,7 @@ function computeStatsFromRiders(riders) {
 // ── COMPANY STATS RENDER ───────────────────────────────
 
 function renderCompanyStats(stats) {
+  // "يعمل / بداية" card shows working + starting (late riders shown separately)
   setText('cp-checkedIn',      stats.working + stats.starting);
   setText('cp-checkedInLate',  stats.late);
   setText('cp-notCheckedIn',   stats.offline);
@@ -616,16 +635,17 @@ function applyFiltersAndSort() {
       break;
     case 'no-orders':
       list = list.filter(r =>
-        ['working', 'starting'].includes(effectiveStatus(r)) && !hasActiveOrder(r)
+        ['working', 'starting', 'late'].includes(effectiveStatus(r)) && !hasActiveOrder(r)
       );
       break;
     case 'late':
-      // Late filter uses isLate() — based on late_seconds, not API status field
+      // isLate() covers both status==='late' AND late_seconds > 0
       list = list.filter(r => isLate(r));
       break;
     case 'all':
       break;
     default:
+      // For working/starting/break/offline filters use the API status field directly
       list = list.filter(r => effectiveStatus(r) === currentFilter);
   }
 
@@ -696,6 +716,10 @@ async function selectRider(id) {
   document.getElementById('emptyState').style.display  = 'none';
   document.getElementById('riderDetail').style.display = 'flex';
   switchTab('overview');
+
+  // Scroll detail panel back to top so the sticky header+tabs are visible
+  const panel = document.getElementById('detailPanel');
+  if (panel) panel.scrollTop = 0;
 
   try {
     const rider = await fetchRiderDetails(id);
@@ -1057,35 +1081,49 @@ function downloadWalletExcel() {
 
 // ── MAP ────────────────────────────────────────────────
 /*
-  Chrome Extension (Manifest V3) blocks external scripts.
-  Fix: place Leaflet files locally:
-    libs/leaflet.css
-    libs/leaflet.js
-  Download from: https://leafletjs.com/download.html
+  Leaflet setup for Chrome Extension (Manifest V3):
+  ─────────────────────────────────────────────────
+  1. Download Leaflet from https://leafletjs.com/download.html
+  2. Create a  libs/  folder inside your extension directory
+  3. Place leaflet.js and leaflet.css inside  libs/
+  4. Make sure manifest.json has web_accessible_resources covering libs/*
+     (already done in the updated manifest.json)
+
+  File structure should be:
+    your-extension/
+    ├── libs/
+    │   ├── leaflet.js
+    │   └── leaflet.css
+    ├── dashboard.html
+    ├── dashboard.js
+    ├── dashboard.css
+    └── manifest.json
 */
 
 function loadLeafletThenInit(mapEl) {
   if (typeof L !== 'undefined') { buildMap(mapEl); return; }
 
-  // Try local file first (works in Chrome extension)
-  const localJs  = 'libs/leaflet.js';
-  const localCss = 'libs/leaflet.css';
+  const localJs  = chrome?.runtime?.getURL
+    ? chrome.runtime.getURL('libs/leaflet.js')
+    : 'libs/leaflet.js';
+  const localCss = chrome?.runtime?.getURL
+    ? chrome.runtime.getURL('libs/leaflet.css')
+    : 'libs/leaflet.css';
   const cdnJs    = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
   const cdnCss   = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
 
-  // Inject CSS
+  // Inject CSS (local first)
   const link = document.createElement('link');
   link.rel   = 'stylesheet';
   link.href  = localCss;
   link.onerror = () => { link.href = cdnCss; };
   document.head.appendChild(link);
 
-  // Inject JS
+  // Inject JS (local first, CDN fallback)
   const script    = document.createElement('script');
   script.src      = localJs;
   script.onload   = () => buildMap(mapEl);
   script.onerror  = () => {
-    // Fallback to CDN (works when opened as webpage, not extension)
     const s2   = document.createElement('script');
     s2.src     = cdnJs;
     s2.onload  = () => buildMap(mapEl);
@@ -1101,9 +1139,9 @@ function showMapError(mapEl) {
                 height:100%;color:var(--text-muted);gap:12px;font-size:13px;padding:40px;text-align:center">
       <div style="font-size:40px">🗺</div>
       <div style="font-size:15px;color:var(--text-primary);font-weight:700">${t('map_error')}</div>
-      <div style="font-size:12px;color:var(--text-muted);max-width:340px;line-height:1.7">${t('map_error_sub')}</div>
-      <code style="font-size:11px;background:var(--bg-card);padding:8px 14px;border-radius:6px;color:var(--amber)">
-        libs/leaflet.css &nbsp;|&nbsp; libs/leaflet.js
+      <div style="font-size:12px;color:var(--text-muted);max-width:360px;line-height:1.8">${t('map_error_sub')}</div>
+      <code style="font-size:11px;background:var(--bg-card);padding:10px 16px;border-radius:6px;color:var(--amber);line-height:2">
+        libs/leaflet.js<br>libs/leaflet.css
       </code>
     </div>`;
 }
@@ -1136,7 +1174,7 @@ function buildMap(mapEl) {
   const activeRiders = allRiders.filter(r =>
     r.current_location?.latitude &&
     r.current_location?.longitude &&
-    ['working', 'starting', 'break'].includes(effectiveStatus(r))
+    ['working', 'starting', 'break', 'late'].includes(effectiveStatus(r))
   );
 
   setText('map-rider-count',    activeRiders.length);
@@ -1214,19 +1252,14 @@ function stopAutoRefresh() {
 
 document.addEventListener('DOMContentLoaded', () => {
 
-  // Apply persisted theme + language immediately
   applyTheme();
   applyLanguage();
 
   loadRiders();
 
-  // Theme toggle
   document.getElementById('btnTheme')?.addEventListener('click', toggleTheme);
-
-  // Language toggle
   document.getElementById('btnLang')?.addEventListener('click', toggleLang);
 
-  // Refresh button
   document.getElementById('btnRefresh').addEventListener('click', () => {
     loadRiders();
     if (currentPage === 'map') buildMap(document.getElementById('liveMap'));
@@ -1234,7 +1267,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (selectedRiderId) selectRider(selectedRiderId);
   });
 
-  // Auto-refresh toggle
   const toggle = document.getElementById('autoRefreshToggle');
   toggle.addEventListener('change', () => {
     if (toggle.checked) { startAutoRefresh(); toast(t('toast_auto_on'), 'info'); }
@@ -1242,7 +1274,6 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   if (toggle.checked) startAutoRefresh();
 
-  // Search
   const searchInput = document.getElementById('searchInput');
   const searchClear = document.getElementById('searchClear');
   searchInput.addEventListener('input', () => {
@@ -1257,7 +1288,6 @@ document.addEventListener('DOMContentLoaded', () => {
     applyFiltersAndSort();
   });
 
-  // Filter tabs
   document.querySelectorAll('.filter-tab').forEach(btn => {
     btn.addEventListener('click', () => {
       document.querySelectorAll('.filter-tab').forEach(b => b.classList.remove('active'));
@@ -1267,13 +1297,11 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Sort select
   document.getElementById('sortSelect').addEventListener('change', e => {
     sortBy = e.target.value;
     applyFiltersAndSort();
   });
 
-  // Detail tabs
   document.querySelectorAll('.detail-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       switchTab(tab.dataset.tab);
@@ -1281,7 +1309,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Close detail
   document.getElementById('closeDetail').addEventListener('click', () => {
     selectedRiderId = null;
     document.getElementById('riderDetail').style.display = 'none';
@@ -1289,15 +1316,12 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.rider-card').forEach(c => c.classList.remove('selected'));
   });
 
-  // Nav
   document.getElementById('navDashboard').addEventListener('click', showDashboardPage);
   document.getElementById('navWallet').addEventListener('click', showWalletPage);
   document.getElementById('navMap').addEventListener('click', showMapPage);
 
-  // Wallet export
   document.getElementById('btnExportWallet')?.addEventListener('click', downloadWalletExcel);
 
-  // Keyboard shortcuts
   document.addEventListener('keydown', e => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'r') { e.preventDefault(); loadRiders(); }
     if (e.key === 'Escape') document.getElementById('closeDetail').click();

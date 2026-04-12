@@ -7,28 +7,64 @@
   <link rel="stylesheet" href="dashboard.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
-
   <!--
-    LEAFLET MAP LIBRARY
-    ─────────────────────────────────────────────────────────
+    ════════════════════════════════════════════════
+    LEAFLET MAP — SETUP INSTRUCTIONS
+    ════════════════════════════════════════════════
     Chrome Extension (Manifest V3) blocks external scripts.
-    Download Leaflet and place the files here:
-      libs/leaflet.css
-      libs/leaflet.js
-    Download: https://leafletjs.com/download.html  (v1.9.x)
+    You MUST place Leaflet locally:
 
-    For web/browser use (non-extension), the JS will
-    fall back to the CDN automatically.
-    ─────────────────────────────────────────────────────────
+      1. Download from https://leafletjs.com/download.html  (v1.9.x)
+      2. Create a  libs/  folder next to this file
+      3. Copy leaflet.js  →  libs/leaflet.js
+         Copy leaflet.css →  libs/leaflet.css
+
+    Final structure:
+      your-extension/
+      ├── libs/
+      │   ├── leaflet.js
+      │   └── leaflet.css
+      ├── dashboard.html   ← this file
+      ├── dashboard.js
+      ├── dashboard.css
+      └── manifest.json    ← already has web_accessible_resources for libs/*
+    ════════════════════════════════════════════════
   -->
-  <link rel="stylesheet" href="libs/leaflet.css"
-        onerror="this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'">
+  <link rel="stylesheet" href="libs/leaflet.css">
+
+  <style>
+    /* ── FIX: Sticky header + tabs wrapper ──────────────────
+       Wraps both .detail-header and .detail-tabs so they
+       BOTH stay pinned at the top when the user scrolls
+       through long content (deliveries, shifts, etc.)
+       ──────────────────────────────────────────────────── */
+    .detail-sticky-top {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: var(--bg-surface);
+      /* single border at the bottom of the whole sticky block */
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* detail-header is no longer individually sticky — parent handles it */
+    .detail-header {
+      position: static !important;
+      /* keep its own bottom border only when NOT inside sticky wrapper,
+         but here we suppress it so we don't get a double line */
+      border-bottom: none;
+    }
+
+    /* tabs border-bottom is now handled by the sticky wrapper */
+    .detail-tabs {
+      border-bottom: none;
+    }
+  </style>
 </head>
 <body>
 
   <!-- HEADER -->
   <header class="header">
-    <!-- Brand -->
     <div class="header-brand">
       <span class="brand-icon">🛵</span>
       <div class="brand-text">
@@ -37,14 +73,12 @@
       </div>
     </div>
 
-    <!-- Nav -->
     <div class="nav-btns">
       <button class="nav-btn active" id="navDashboard" data-page="dashboard" data-i18n="nav_dashboard">🏠 الرئيسية</button>
       <button class="nav-btn" id="navWallet"    data-page="wallet"    data-i18n="nav_wallet">💰 المحافظ</button>
       <button class="nav-btn" id="navMap"       data-page="map"       data-i18n="nav_map">🗺 الخريطة</button>
     </div>
 
-    <!-- Live Stats -->
     <div class="header-stats" id="headerStats">
       <div class="stat-pill working">
         <span id="stat-working">0</span>
@@ -72,7 +106,6 @@
       </div>
     </div>
 
-    <!-- Actions -->
     <div class="header-actions">
       <div class="live-badge">
         <span class="live-dot"></span>
@@ -96,7 +129,6 @@
           <span class="toggle-slider"></span>
         </label>
       </div>
-      <!-- Settings: Theme + Language -->
       <div class="btn-settings-group">
         <button class="btn-setting" id="btnTheme" title="Toggle theme">🌙 داكن</button>
         <button class="btn-setting" id="btnLang"  title="Toggle language">EN</button>
@@ -123,13 +155,13 @@
       </div>
 
       <div class="filter-tabs">
-        <button class="filter-tab active" data-status="all"       data-i18n="filter_all">الكل</button>
-        <button class="filter-tab"        data-status="working"   data-i18n="filter_working">يعمل</button>
-        <button class="filter-tab"        data-status="starting"  data-i18n="filter_starting">بداية</button>
-        <button class="filter-tab"        data-status="break"     data-i18n="filter_break">استراحة</button>
-        <button class="filter-tab late-tab"     data-status="late"      data-i18n="filter_late">⚠ متأخر</button>
-        <button class="filter-tab orders-tab"   data-status="orders"    data-i18n="filter_orders">📦 طلب</button>
-        <button class="filter-tab no-orders-tab" data-status="no-orders" data-i18n="filter_no_orders">⚪ بدون طلب</button>
+        <button class="filter-tab active" data-status="all"        data-i18n="filter_all">الكل</button>
+        <button class="filter-tab"        data-status="working"    data-i18n="filter_working">يعمل</button>
+        <button class="filter-tab"        data-status="starting"   data-i18n="filter_starting">بداية</button>
+        <button class="filter-tab"        data-status="break"      data-i18n="filter_break">استراحة</button>
+        <button class="filter-tab late-tab"      data-status="late"       data-i18n="filter_late">⚠ متأخر</button>
+        <button class="filter-tab orders-tab"    data-status="orders"     data-i18n="filter_orders">📦 طلب</button>
+        <button class="filter-tab no-orders-tab" data-status="no-orders"  data-i18n="filter_no_orders">⚪ بدون طلب</button>
       </div>
 
       <div class="sort-bar">
@@ -170,7 +202,6 @@
             </div>
           </div>
 
-          <!-- Late Alert Banner -->
           <div class="cp-late-banner" id="cpLateBanner" style="display:none">
             <span class="cp-banner-icon">⚠</span>
             <span data-i18n="cp_late_alert">تنبيه:</span>
@@ -181,7 +212,6 @@
             <b id="cp-reassignments">0</b>
           </div>
 
-          <!-- Workers -->
           <div class="cp-section-label" data-i18n="cp_workers">حالة السائقين</div>
           <div class="cp-row">
             <div class="cp-card cp-green">
@@ -211,7 +241,6 @@
             </div>
           </div>
 
-          <!-- Orders -->
           <div class="cp-section-label" data-i18n="cp_orders_section">الطلبات</div>
           <div class="cp-row">
             <div class="cp-card cp-amber cp-wide">
@@ -226,7 +255,6 @@
             </div>
           </div>
 
-          <!-- Utilization -->
           <div class="cp-section-label" data-i18n="cp_util_section">متوسط معدل الاستخدام</div>
           <div class="cp-util-wrap">
             <div class="cp-bar-track">
@@ -235,13 +263,11 @@
             <span class="cp-util-num" id="cp-utilRate">—</span>
           </div>
 
-          <!-- Vehicles -->
           <div class="cp-section-label" data-i18n="cp_vehicles_section">توزيع المركبات</div>
           <div class="cp-vehicles-row" id="cp-vehicles">
             <span class="cp-loading-text" data-i18n="cp_loading">جاري التحميل...</span>
           </div>
 
-          <!-- Company Table -->
           <div class="cp-section-label" data-i18n="cp_company_section">ملخص الشركة</div>
           <div class="cp-table-wrap">
             <table class="cp-table">
@@ -270,29 +296,37 @@
 
       <!-- Rider Detail -->
       <div class="rider-detail" id="riderDetail" style="display:none">
-        <div class="detail-header">
-          <div class="detail-avatar" id="detailAvatar">?</div>
-          <div class="detail-info">
-            <div class="detail-name-row">
-              <h2 class="detail-name" id="detailName">—</h2>
-              <span class="status-badge" id="detailStatusBadge">—</span>
-            </div>
-            <div class="detail-meta">
-              <span class="meta-item" id="detailPhone">📞 —</span>
-              <span class="meta-item" id="detailPoint">📍 —</span>
-              <span class="meta-item" id="detailCompany">🏢 —</span>
-            </div>
-          </div>
-          <button class="close-detail" id="closeDetail">✕</button>
-        </div>
 
-        <div class="detail-tabs">
-          <button class="detail-tab active" data-tab="overview"      data-i18n="tab_overview">نظرة عامة</button>
-          <button class="detail-tab"        data-tab="deliveries"    data-i18n="tab_deliveries">التوصيلات</button>
-          <button class="detail-tab"        data-tab="shifts"        data-i18n="tab_shifts">الوردية</button>
-          <button class="detail-tab"        data-tab="performance"   data-i18n="tab_performance">الأداء</button>
-          <button class="detail-tab"        data-tab="groupbypoint"  data-i18n="tab_groupbypoint">📍 حسب النقطة</button>
-        </div>
+        <!--
+          FIX: detail-header and detail-tabs are now wrapped in .detail-sticky-top
+          so BOTH the header AND the tab bar stay visible when scrolling through
+          long content (deliveries list, shifts table, etc.)
+        -->
+        <div class="detail-sticky-top">
+          <div class="detail-header">
+            <div class="detail-avatar" id="detailAvatar">?</div>
+            <div class="detail-info">
+              <div class="detail-name-row">
+                <h2 class="detail-name" id="detailName">—</h2>
+                <span class="status-badge" id="detailStatusBadge">—</span>
+              </div>
+              <div class="detail-meta">
+                <span class="meta-item" id="detailPhone">📞 —</span>
+                <span class="meta-item" id="detailPoint">📍 —</span>
+                <span class="meta-item" id="detailCompany">🏢 —</span>
+              </div>
+            </div>
+            <button class="close-detail" id="closeDetail">✕</button>
+          </div>
+
+          <div class="detail-tabs">
+            <button class="detail-tab active" data-tab="overview"     data-i18n="tab_overview">نظرة عامة</button>
+            <button class="detail-tab"        data-tab="deliveries"   data-i18n="tab_deliveries">التوصيلات</button>
+            <button class="detail-tab"        data-tab="shifts"       data-i18n="tab_shifts">الوردية</button>
+            <button class="detail-tab"        data-tab="performance"  data-i18n="tab_performance">الأداء</button>
+            <button class="detail-tab"        data-tab="groupbypoint" data-i18n="tab_groupbypoint">📍 حسب النقطة</button>
+          </div>
+        </div><!-- end detail-sticky-top -->
 
         <!-- TAB: Overview -->
         <div class="tab-content active" id="tab-overview">
