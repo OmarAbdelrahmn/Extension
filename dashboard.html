@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html dir="rtl" lang="ar">
+<html dir="rtl" lang="ar" data-theme="dark">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,48 +8,81 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 
-  <!-- Leaflet: loaded statically so it's ready before initMap() is called -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <!--
+    LEAFLET MAP LIBRARY
+    ─────────────────────────────────────────────────────────
+    Chrome Extension (Manifest V3) blocks external scripts.
+    Download Leaflet and place the files here:
+      libs/leaflet.css
+      libs/leaflet.js
+    Download: https://leafletjs.com/download.html  (v1.9.x)
+
+    For web/browser use (non-extension), the JS will
+    fall back to the CDN automatically.
+    ─────────────────────────────────────────────────────────
+  -->
+  <link rel="stylesheet" href="libs/leaflet.css"
+        onerror="this.href='https://unpkg.com/leaflet@1.9.4/dist/leaflet.css'">
 </head>
 <body>
 
   <!-- HEADER -->
   <header class="header">
+    <!-- Brand -->
     <div class="header-brand">
       <span class="brand-icon">🛵</span>
       <div class="brand-text">
-        <h1>عمليات السائقين</h1>
-        <span class="brand-sub">جدة — المدينة 5</span>
+        <h1 data-i18n="brand_title">عمليات السائقين</h1>
+        <span class="brand-sub" data-i18n="brand_sub">جدة — المدينة 5</span>
       </div>
     </div>
 
-    <!-- NAV BUTTONS -->
+    <!-- Nav -->
     <div class="nav-btns">
-      <button class="nav-btn active" id="navDashboard" data-page="dashboard">🏠 الرئيسية</button>
-      <button class="nav-btn" id="navWallet" data-page="wallet">💰 المحافظ</button>
-      <button class="nav-btn" id="navMap" data-page="map">🗺 الخريطة</button>
+      <button class="nav-btn active" id="navDashboard" data-page="dashboard" data-i18n="nav_dashboard">🏠 الرئيسية</button>
+      <button class="nav-btn" id="navWallet"    data-page="wallet"    data-i18n="nav_wallet">💰 المحافظ</button>
+      <button class="nav-btn" id="navMap"       data-page="map"       data-i18n="nav_map">🗺 الخريطة</button>
     </div>
 
+    <!-- Live Stats -->
     <div class="header-stats" id="headerStats">
-      <div class="stat-pill working"><span id="stat-working">0</span> يعمل</div>
-      <div class="stat-pill starting"><span id="stat-starting">0</span> بداية</div>
-      <div class="stat-pill break"><span id="stat-break">0</span> استراحة</div>
-      <div class="stat-pill late"><span id="stat-late">0</span> متأخر</div>
-      <div class="stat-pill orders"><span id="stat-orders">0</span> 📦 طلب</div>
-      <div class="stat-pill total"><span id="stat-total">0</span> الكل</div>
+      <div class="stat-pill working">
+        <span id="stat-working">0</span>
+        <span data-i18n="stat_working">يعمل</span>
+      </div>
+      <div class="stat-pill starting">
+        <span id="stat-starting">0</span>
+        <span data-i18n="stat_starting">بداية</span>
+      </div>
+      <div class="stat-pill break">
+        <span id="stat-break">0</span>
+        <span data-i18n="stat_break">استراحة</span>
+      </div>
+      <div class="stat-pill late">
+        <span id="stat-late">0</span>
+        <span data-i18n="stat_late">متأخر</span>
+      </div>
+      <div class="stat-pill orders">
+        <span id="stat-orders">0</span>
+        <span data-i18n="stat_orders">📦 طلب</span>
+      </div>
+      <div class="stat-pill total">
+        <span id="stat-total">0</span>
+        <span data-i18n="stat_all">الكل</span>
+      </div>
     </div>
 
+    <!-- Actions -->
     <div class="header-actions">
       <div class="live-badge">
         <span class="live-dot"></span>
-        <span>مباشر</span>
+        <span data-i18n="live">مباشر</span>
       </div>
       <div class="last-update-wrap">
-        <span class="update-label">آخر تحديث</span>
+        <span class="update-label" data-i18n="last_update_label">آخر تحديث</span>
         <span class="update-time" id="lastUpdate">—</span>
       </div>
-      <button class="btn-refresh" id="btnRefresh" title="تحديث البيانات">
+      <button class="btn-refresh" id="btnRefresh" title="Refresh">
         <svg id="refreshIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="23 4 23 10 17 10"/>
           <polyline points="1 20 1 14 7 14"/>
@@ -57,11 +90,16 @@
         </svg>
       </button>
       <div class="auto-refresh-wrap">
-        <label class="toggle-label">تحديث تلقائي</label>
+        <span data-i18n="auto_refresh">تحديث تلقائي</span>
         <label class="toggle">
           <input type="checkbox" id="autoRefreshToggle" checked>
           <span class="toggle-slider"></span>
         </label>
+      </div>
+      <!-- Settings: Theme + Language -->
+      <div class="btn-settings-group">
+        <button class="btn-setting" id="btnTheme" title="Toggle theme">🌙 داكن</button>
+        <button class="btn-setting" id="btnLang"  title="Toggle language">EN</button>
       </div>
     </div>
   </header>
@@ -74,33 +112,41 @@
     <!-- SIDEBAR -->
     <aside class="sidebar">
       <div class="search-wrapper">
-        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-        <input type="text" id="searchInput" placeholder="بحث بالاسم أو الهاتف..." class="search-input">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" id="searchInput"
+               data-i18n-ph="search_placeholder"
+               placeholder="بحث بالاسم أو الهاتف..."
+               class="search-input">
         <button class="search-clear" id="searchClear" style="display:none">✕</button>
       </div>
+
       <div class="filter-tabs">
-        <button class="filter-tab active" data-status="all">الكل</button>
-        <button class="filter-tab" data-status="working">يعمل</button>
-        <button class="filter-tab" data-status="starting">بداية</button>
-        <button class="filter-tab" data-status="break">استراحة</button>
-        <button class="filter-tab late-tab" data-status="late">⚠ متأخر</button>
-        <button class="filter-tab orders-tab" data-status="orders">📦 طلب</button>
-        <button class="filter-tab no-orders-tab" data-status="no-orders">⚪ بدون طلب</button>
+        <button class="filter-tab active" data-status="all"       data-i18n="filter_all">الكل</button>
+        <button class="filter-tab"        data-status="working"   data-i18n="filter_working">يعمل</button>
+        <button class="filter-tab"        data-status="starting"  data-i18n="filter_starting">بداية</button>
+        <button class="filter-tab"        data-status="break"     data-i18n="filter_break">استراحة</button>
+        <button class="filter-tab late-tab"     data-status="late"      data-i18n="filter_late">⚠ متأخر</button>
+        <button class="filter-tab orders-tab"   data-status="orders"    data-i18n="filter_orders">📦 طلب</button>
+        <button class="filter-tab no-orders-tab" data-status="no-orders" data-i18n="filter_no_orders">⚪ بدون طلب</button>
       </div>
+
       <div class="sort-bar">
-        <span class="sort-label">ترتيب:</span>
+        <span class="sort-label" data-i18n="sort_label">ترتيب:</span>
         <select class="sort-select" id="sortSelect">
-          <option value="name">الاسم</option>
-          <option value="status">الحالة</option>
-          <option value="deliveries">التوصيلات</option>
-          <option value="utilization">معدل الاستخدام</option>
-          <option value="late">وقت التأخير</option>
+          <option value="name"        data-i18n="sort_name">الاسم</option>
+          <option value="status"      data-i18n="sort_status">الحالة</option>
+          <option value="deliveries"  data-i18n="sort_deliveries">التوصيلات</option>
+          <option value="utilization" data-i18n="sort_util">معدل الاستخدام</option>
+          <option value="late"        data-i18n="sort_late">وقت التأخير</option>
         </select>
       </div>
+
       <div class="rider-list" id="riderList">
         <div class="loading-state">
           <div class="spinner"></div>
-          <p>جاري التحميل...</p>
+          <p data-i18n="loading">جاري التحميل...</p>
         </div>
       </div>
     </aside>
@@ -108,15 +154,15 @@
     <!-- DETAIL PANEL -->
     <main class="detail-panel" id="detailPanel">
 
-      <!-- Company Stats -->
+      <!-- Company Stats (shown when no rider selected) -->
       <div id="emptyState" class="empty-state">
         <div class="company-panel" id="companyPanel">
           <div class="cp-header">
             <div class="cp-header-brand">
               <span class="cp-main-icon">🏢</span>
               <div>
-                <h3 class="cp-title">أداء الشركة الإجمالي</h3>
-                <span class="cp-sub">شركة 463 · جدة · المدينة 5</span>
+                <h3 class="cp-title" data-i18n="cp_title">أداء الشركة الإجمالي</h3>
+                <span class="cp-sub" data-i18n="cp_sub">شركة 463 · جدة · المدينة 5</span>
               </div>
             </div>
             <div id="cpLoadingSpinner" class="cp-spinner-wrap">
@@ -127,58 +173,61 @@
           <!-- Late Alert Banner -->
           <div class="cp-late-banner" id="cpLateBanner" style="display:none">
             <span class="cp-banner-icon">⚠</span>
-            <span>تنبيه: <b id="cp-lateWorkers">0</b> سائق متأخر الآن</span>
+            <span data-i18n="cp_late_alert">تنبيه:</span>
+            <b id="cp-lateWorkers">0</b>
+            <span data-i18n="cp_late_drivers">سائق متأخر الآن</span>
             <span class="cp-separator">|</span>
-            <span>إعادة تعيين: <b id="cp-reassignments">0</b></span>
+            <span data-i18n="cp_reassign">إعادة تعيين:</span>
+            <b id="cp-reassignments">0</b>
           </div>
 
           <!-- Workers -->
-          <div class="cp-section-label">حالة السائقين</div>
+          <div class="cp-section-label" data-i18n="cp_workers">حالة السائقين</div>
           <div class="cp-row">
             <div class="cp-card cp-green">
               <div class="cp-icon-top">✅</div>
               <div class="cp-num" id="cp-checkedIn">—</div>
-              <div class="cp-lbl">يعمل / بداية</div>
+              <div class="cp-lbl" data-i18n="cp_checked_in">يعمل / بداية</div>
             </div>
             <div class="cp-card cp-red">
               <div class="cp-icon-top">⏰</div>
               <div class="cp-num" id="cp-checkedInLate">—</div>
-              <div class="cp-lbl">متأخر</div>
+              <div class="cp-lbl" data-i18n="cp_late_lbl">متأخر</div>
             </div>
             <div class="cp-card cp-orange">
               <div class="cp-icon-top">❌</div>
               <div class="cp-num" id="cp-notCheckedIn">—</div>
-              <div class="cp-lbl">غير متصل</div>
+              <div class="cp-lbl" data-i18n="cp_offline">غير متصل</div>
             </div>
             <div class="cp-card cp-blue">
               <div class="cp-icon-top">☕</div>
               <div class="cp-num" id="cp-onBreak">—</div>
-              <div class="cp-lbl">في استراحة</div>
+              <div class="cp-lbl" data-i18n="cp_break">في استراحة</div>
             </div>
             <div class="cp-card cp-amber">
               <div class="cp-icon-top">📦</div>
               <div class="cp-num" id="cp-withOrders">—</div>
-              <div class="cp-lbl">لديه طلب</div>
+              <div class="cp-lbl" data-i18n="cp_with_orders_lbl">لديه طلب</div>
             </div>
           </div>
 
           <!-- Orders -->
-          <div class="cp-section-label">الطلبات</div>
+          <div class="cp-section-label" data-i18n="cp_orders_section">الطلبات</div>
           <div class="cp-row">
             <div class="cp-card cp-amber cp-wide">
               <div class="cp-icon-top">📦</div>
               <div class="cp-num" id="cp-ordersAccepted">—</div>
-              <div class="cp-lbl">طلب مقبول</div>
+              <div class="cp-lbl" data-i18n="cp_accepted">طلب مقبول</div>
             </div>
             <div class="cp-card cp-red cp-wide">
               <div class="cp-icon-top">🚫</div>
               <div class="cp-num" id="cp-ordersDeclined">—</div>
-              <div class="cp-lbl">طلب مرفوض</div>
+              <div class="cp-lbl" data-i18n="cp_declined">طلب مرفوض</div>
             </div>
           </div>
 
           <!-- Utilization -->
-          <div class="cp-section-label">متوسط معدل الاستخدام</div>
+          <div class="cp-section-label" data-i18n="cp_util_section">متوسط معدل الاستخدام</div>
           <div class="cp-util-wrap">
             <div class="cp-bar-track">
               <div class="cp-bar-fill-el" id="cp-utilBar" style="width:0%"></div>
@@ -187,32 +236,34 @@
           </div>
 
           <!-- Vehicles -->
-          <div class="cp-section-label">توزيع المركبات</div>
+          <div class="cp-section-label" data-i18n="cp_vehicles_section">توزيع المركبات</div>
           <div class="cp-vehicles-row" id="cp-vehicles">
-            <span class="cp-loading-text">جاري التحميل...</span>
+            <span class="cp-loading-text" data-i18n="cp_loading">جاري التحميل...</span>
           </div>
 
-          <!-- Company Stats Table -->
-          <div class="cp-section-label">ملخص الشركة</div>
+          <!-- Company Table -->
+          <div class="cp-section-label" data-i18n="cp_company_section">ملخص الشركة</div>
           <div class="cp-table-wrap">
             <table class="cp-table">
               <thead>
                 <tr>
-                  <th>رقم الشركة</th>
-                  <th>السائقون النشطون</th>
-                  <th>إجمالي التوصيلات</th>
-                  <th>متوسط الاستخدام</th>
+                  <th data-i18n="cp_table_id">رقم الشركة</th>
+                  <th data-i18n="cp_table_active">السائقون النشطون</th>
+                  <th data-i18n="cp_table_deliveries">إجمالي التوصيلات</th>
+                  <th data-i18n="cp_table_util">متوسط الاستخدام</th>
                 </tr>
               </thead>
               <tbody id="cp-statsBody">
-                <tr><td colspan="4" class="no-data">جاري التحميل...</td></tr>
+                <tr><td colspan="4" class="no-data" data-i18n="cp_loading">جاري التحميل...</td></tr>
               </tbody>
             </table>
           </div>
 
           <div class="cp-footer-hint">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-            انقر على أي سائق من القائمة لعرض تفاصيله الكاملة
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13">
+              <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+            </svg>
+            <span data-i18n="cp_footer_hint">انقر على أي سائق من القائمة لعرض تفاصيله الكاملة</span>
           </div>
         </div>
       </div>
@@ -236,39 +287,77 @@
         </div>
 
         <div class="detail-tabs">
-          <button class="detail-tab active" data-tab="overview">نظرة عامة</button>
-          <button class="detail-tab" data-tab="deliveries">التوصيلات</button>
-          <button class="detail-tab" data-tab="shifts">الوردية</button>
-          <button class="detail-tab" data-tab="performance">الأداء</button>
-          <button class="detail-tab" data-tab="groupbypoint">📍 حسب النقطة</button>
+          <button class="detail-tab active" data-tab="overview"      data-i18n="tab_overview">نظرة عامة</button>
+          <button class="detail-tab"        data-tab="deliveries"    data-i18n="tab_deliveries">التوصيلات</button>
+          <button class="detail-tab"        data-tab="shifts"        data-i18n="tab_shifts">الوردية</button>
+          <button class="detail-tab"        data-tab="performance"   data-i18n="tab_performance">الأداء</button>
+          <button class="detail-tab"        data-tab="groupbypoint"  data-i18n="tab_groupbypoint">📍 حسب النقطة</button>
         </div>
 
         <!-- TAB: Overview -->
         <div class="tab-content active" id="tab-overview">
           <div class="cards-grid">
             <div class="info-card">
-              <div class="card-header"><span class="card-icon">⏰</span><h3>الوردية الحالية</h3></div>
-              <div class="shift-row"><span class="shift-label">بداية الوردية</span><span class="shift-val" id="shiftStart">—</span></div>
-              <div class="shift-row"><span class="shift-label">نهاية الوردية</span><span class="shift-val" id="shiftEnd">—</span></div>
-              <div class="shift-row"><span class="shift-label">المدة المتبقية</span><span class="shift-val accent" id="shiftRemain">—</span></div>
-              <div class="shift-progress-bar"><div class="shift-progress-fill" id="shiftProgressFill" style="width:0%"></div></div>
+              <div class="card-header">
+                <span class="card-icon">⏰</span>
+                <h3 data-i18n="card_shift">الوردية الحالية</h3>
+              </div>
+              <div class="shift-row">
+                <span class="shift-label" data-i18n="shift_start">بداية الوردية</span>
+                <span class="shift-val" id="shiftStart">—</span>
+              </div>
+              <div class="shift-row">
+                <span class="shift-label" data-i18n="shift_end">نهاية الوردية</span>
+                <span class="shift-val" id="shiftEnd">—</span>
+              </div>
+              <div class="shift-row">
+                <span class="shift-label" data-i18n="shift_remain">المدة المتبقية</span>
+                <span class="shift-val accent" id="shiftRemain">—</span>
+              </div>
+              <div class="shift-progress-bar">
+                <div class="shift-progress-fill" id="shiftProgressFill" style="width:0%"></div>
+              </div>
             </div>
+
             <div class="info-card">
-              <div class="card-header"><span class="card-icon">🏍</span><h3>المركبة</h3></div>
+              <div class="card-header">
+                <span class="card-icon">🏍</span>
+                <h3 data-i18n="card_vehicle">المركبة</h3>
+              </div>
               <div class="vehicle-name" id="vehicleName">—</div>
-              <div class="vehicle-meta"><span>السرعة الافتراضية: <b id="vehicleSpeed">—</b> كم/ساعة</span></div>
+              <div class="vehicle-meta">
+                <span data-i18n="vehicle_speed_lbl">السرعة الافتراضية</span>:
+                <b id="vehicleSpeed">—</b>
+              </div>
             </div>
+
             <div class="info-card">
-              <div class="card-header"><span class="card-icon">💰</span><h3>المحفظة</h3></div>
+              <div class="card-header">
+                <span class="card-icon">💰</span>
+                <h3 data-i18n="card_wallet">المحفظة</h3>
+              </div>
               <div class="wallet-amount" id="walletBalance">—</div>
               <div class="wallet-status" id="walletStatus">—</div>
             </div>
+
             <div class="info-card">
-              <div class="card-header"><span class="card-icon">📍</span><h3>الموقع الحالي</h3></div>
-              <div class="coord-row"><span>خط العرض</span><span class="mono" id="locLat">—</span></div>
-              <div class="coord-row"><span>خط الطول</span><span class="mono" id="locLng">—</span></div>
-              <div class="coord-row"><span>آخر تحديث</span><span class="mono small" id="locUpdated">—</span></div>
-              <a class="map-btn" id="mapLink" href="#" target="_blank">🗺 فتح في خرائط جوجل</a>
+              <div class="card-header">
+                <span class="card-icon">📍</span>
+                <h3 data-i18n="card_location">الموقع الحالي</h3>
+              </div>
+              <div class="coord-row">
+                <span data-i18n="loc_lat">خط العرض</span>
+                <span class="mono" id="locLat">—</span>
+              </div>
+              <div class="coord-row">
+                <span data-i18n="loc_lng">خط الطول</span>
+                <span class="mono" id="locLng">—</span>
+              </div>
+              <div class="coord-row">
+                <span data-i18n="loc_updated">آخر تحديث</span>
+                <span class="mono small" id="locUpdated">—</span>
+              </div>
+              <a class="map-btn" id="mapLink" href="#" target="_blank" data-i18n="open_map">🗺 فتح في خرائط جوجل</a>
             </div>
           </div>
         </div>
@@ -276,28 +365,35 @@
         <!-- TAB: Deliveries -->
         <div class="tab-content" id="tab-deliveries">
           <div class="delivery-stats-row">
-            <div class="dstat"><span class="dstat-num" id="ds-completed">0</span><span class="dstat-label">مكتملة</span></div>
-            <div class="dstat"><span class="dstat-num" id="ds-accepted">0</span><span class="dstat-label">مقبولة</span></div>
-            <div class="dstat"><span class="dstat-num" id="ds-notified">0</span><span class="dstat-label">إشعارات</span></div>
-            <div class="dstat"><span class="dstat-num" id="ds-declined">0</span><span class="dstat-label">مرفوضة</span></div>
-            <div class="dstat"><span class="dstat-num" id="ds-stacked">0</span><span class="dstat-label">مكدسة</span></div>
-            <div class="dstat"><span class="dstat-num" id="ds-acceptance">0%</span><span class="dstat-label">معدل القبول</span></div>
+            <div class="dstat"><span class="dstat-num" id="ds-completed">0</span><span class="dstat-label" data-i18n="ds_completed">مكتملة</span></div>
+            <div class="dstat"><span class="dstat-num" id="ds-accepted">0</span><span class="dstat-label"  data-i18n="ds_accepted">مقبولة</span></div>
+            <div class="dstat"><span class="dstat-num" id="ds-notified">0</span><span class="dstat-label"  data-i18n="ds_notified">إشعارات</span></div>
+            <div class="dstat"><span class="dstat-num" id="ds-declined">0</span><span class="dstat-label"  data-i18n="ds_declined">مرفوضة</span></div>
+            <div class="dstat"><span class="dstat-num" id="ds-stacked">0</span><span class="dstat-label"   data-i18n="ds_stacked">مكدسة</span></div>
+            <div class="dstat"><span class="dstat-num" id="ds-acceptance">0%</span><span class="dstat-label" data-i18n="ds_acceptance">معدل القبول</span></div>
           </div>
           <div class="deliveries-list" id="deliveriesList">
-            <p class="no-data">لا توجد بيانات توصيل</p>
+            <p class="no-data" data-i18n="no_deliveries">لا توجد توصيلات</p>
           </div>
         </div>
 
         <!-- TAB: Shifts -->
         <div class="tab-content" id="tab-shifts">
           <div class="shifts-table-wrap">
-            <div class="shifts-loading" id="shiftsLoading"><div class="spinner"></div><p>جاري تحميل الورديات...</p></div>
+            <div class="shifts-loading" id="shiftsLoading">
+              <div class="spinner"></div>
+              <p data-i18n="shifts_loading">جاري تحميل الورديات...</p>
+            </div>
             <div id="shiftsContent" style="display:none">
               <table class="shifts-table">
                 <thead>
                   <tr>
-                    <th>رقم الوردية</th><th>البداية</th><th>النهاية</th>
-                    <th>نقطة الانطلاق</th><th>الحالة</th><th>المدة</th>
+                    <th data-i18n="shifts_id">رقم الوردية</th>
+                    <th data-i18n="shifts_start">البداية</th>
+                    <th data-i18n="shifts_end">النهاية</th>
+                    <th data-i18n="shifts_point">نقطة الانطلاق</th>
+                    <th data-i18n="shifts_status">الحالة</th>
+                    <th data-i18n="shifts_duration">المدة</th>
                   </tr>
                 </thead>
                 <tbody id="shiftsTableBody"></tbody>
@@ -319,7 +415,7 @@
                 </svg>
                 <span class="perf-circle-val" id="perfUtilVal">0%</span>
               </div>
-              <div class="perf-label">معدل الاستخدام</div>
+              <div class="perf-label" data-i18n="perf_util">معدل الاستخدام</div>
             </div>
             <div class="perf-card">
               <div class="perf-circle">
@@ -331,13 +427,29 @@
                 </svg>
                 <span class="perf-circle-val" id="perfAccVal">0%</span>
               </div>
-              <div class="perf-label">معدل القبول</div>
+              <div class="perf-label" data-i18n="perf_acceptance">معدل القبول</div>
             </div>
             <div class="perf-time-stats">
-              <div class="time-stat"><span class="ts-icon">⏱</span><span class="ts-label">وقت العمل</span><span class="ts-val" id="ts-worked">—</span></div>
-              <div class="time-stat late-time"><span class="ts-icon">⚠</span><span class="ts-label">وقت التأخير</span><span class="ts-val" id="ts-late">—</span></div>
-              <div class="time-stat"><span class="ts-icon">☕</span><span class="ts-label">وقت الاستراحة</span><span class="ts-val" id="ts-break">—</span></div>
-              <div class="time-stat"><span class="ts-icon">🔁</span><span class="ts-label">عدد الاستراحات</span><span class="ts-val" id="ts-breaks">—</span></div>
+              <div class="time-stat">
+                <span class="ts-icon">⏱</span>
+                <span class="ts-label" data-i18n="ts_worked">وقت العمل</span>
+                <span class="ts-val" id="ts-worked">—</span>
+              </div>
+              <div class="time-stat late-time">
+                <span class="ts-icon">⚠</span>
+                <span class="ts-label" data-i18n="ts_late">وقت التأخير</span>
+                <span class="ts-val" id="ts-late">—</span>
+              </div>
+              <div class="time-stat">
+                <span class="ts-icon">☕</span>
+                <span class="ts-label" data-i18n="ts_break">وقت الاستراحة</span>
+                <span class="ts-val" id="ts-break">—</span>
+              </div>
+              <div class="time-stat">
+                <span class="ts-icon">🔁</span>
+                <span class="ts-label" data-i18n="ts_breaks">عدد الاستراحات</span>
+                <span class="ts-val" id="ts-breaks">—</span>
+              </div>
             </div>
           </div>
         </div>
@@ -345,7 +457,7 @@
         <!-- TAB: Group by Point -->
         <div class="tab-content" id="tab-groupbypoint">
           <div id="groupByPointContent" class="group-by-point-grid">
-            <div class="no-data">اختر هذا التبويب لعرض التجميع حسب نقطة الانطلاق</div>
+            <div class="no-data" data-i18n="group_select_hint">اختر هذا التبويب لعرض التجميع حسب نقطة الانطلاق</div>
           </div>
         </div>
 
@@ -360,18 +472,30 @@
   <div id="walletPage" class="wallet-page-layout" style="display:none">
     <div class="wallet-page-header">
       <div>
-        <h2>💰 تقرير المحافظ</h2>
-        <span>حد التحذير: 300 ر.س · حد الإيقاف: 500 ر.س</span>
+        <h2 data-i18n="wallet_title">💰 تقرير المحافظ</h2>
+        <span data-i18n="wallet_sub">حد التحذير: 300 ر.س · حد الإيقاف: 500 ر.س</span>
       </div>
       <div class="wallet-page-summary">
-        <div class="ws-pill ws-danger">🔴 فوق 500: <b id="wallet-summary-hard">—</b></div>
-        <div class="ws-pill ws-warn">🟠 300-500: <b id="wallet-summary-soft">—</b></div>
-        <div class="ws-pill ws-ok">🟢 طبيعي: <b id="wallet-summary-ok">—</b></div>
-        <div class="ws-pill ws-total">الكل: <b id="wallet-total-riders">—</b></div>
+        <div class="ws-pill ws-danger">
+          <span data-i18n="wallet_over500">🔴 فوق 500:</span> <b id="wallet-summary-hard">—</b>
+        </div>
+        <div class="ws-pill ws-warn">
+          <span data-i18n="wallet_300_500">🟠 300-500:</span> <b id="wallet-summary-soft">—</b>
+        </div>
+        <div class="ws-pill ws-ok">
+          <span data-i18n="wallet_ok_label">🟢 طبيعي:</span> <b id="wallet-summary-ok">—</b>
+        </div>
+        <div class="ws-pill ws-total">
+          <span data-i18n="wallet_total_label">الكل:</span> <b id="wallet-total-riders">—</b>
+        </div>
       </div>
       <button class="btn-export" id="btnExportWallet">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        تصدير Excel
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <span data-i18n="wallet_export">تصدير Excel</span>
       </button>
     </div>
 
@@ -379,17 +503,17 @@
       <table class="wallet-table">
         <thead>
           <tr>
-            <th>#</th>
-            <th>الاسم</th>
-            <th>الهاتف</th>
-            <th>نقطة الانطلاق</th>
-            <th>الرصيد</th>
-            <th>الحالة</th>
-            <th>معرف الموظف</th>
+            <th data-i18n="wallet_col_num">#</th>
+            <th data-i18n="wallet_col_name">الاسم</th>
+            <th data-i18n="wallet_col_phone">الهاتف</th>
+            <th data-i18n="wallet_col_point">نقطة الانطلاق</th>
+            <th data-i18n="wallet_col_balance">الرصيد</th>
+            <th data-i18n="wallet_col_status">الحالة</th>
+            <th data-i18n="wallet_col_id">معرف الموظف</th>
           </tr>
         </thead>
         <tbody id="walletTableBody">
-          <tr><td colspan="7" class="no-data">جاري التحميل...</td></tr>
+          <tr><td colspan="7" class="no-data" data-i18n="loading">جاري التحميل...</td></tr>
         </tbody>
       </table>
     </div>
@@ -401,17 +525,31 @@
   ══════════════════════════════════ -->
   <div id="mapPage" class="map-page-layout" style="display:none">
     <div class="map-legend">
-      <div class="map-legend-title">🗺 خريطة السائقين المباشرة</div>
+      <div class="map-legend-title" data-i18n="map_title">🗺 خريطة السائقين المباشرة</div>
       <div class="map-legend-items">
-        <div class="ml-item"><span class="ml-dot" style="background:#22c55e"></span> لديه طلب نشط (<b id="map-with-orders">—</b>)</div>
-        <div class="ml-item"><span class="ml-dot" style="background:#f59e0b"></span> بدون طلب (<b id="map-without-orders">—</b>)</div>
-        <div class="ml-item"><span class="ml-dot" style="background:#ef4444"></span> متأخر</div>
-        <div class="ml-item">إجمالي على الخريطة: <b id="map-rider-count">—</b> سائق</div>
+        <div class="ml-item">
+          <span class="ml-dot" style="background:#22c55e"></span>
+          <span data-i18n="map_with_orders">لديه طلب نشط</span>
+          (<b id="map-with-orders">—</b>)
+        </div>
+        <div class="ml-item">
+          <span class="ml-dot" style="background:#f59e0b"></span>
+          <span data-i18n="map_without_orders">بدون طلب</span>
+          (<b id="map-without-orders">—</b>)
+        </div>
+        <div class="ml-item">
+          <span class="ml-dot" style="background:#ef4444"></span>
+          <span data-i18n="map_late_legend">متأخر</span>
+        </div>
+        <div class="ml-item">
+          <span data-i18n="map_total">إجمالي على الخريطة:</span>
+          <b id="map-rider-count">—</b>
+          <span data-i18n="map_driver">سائق</span>
+        </div>
       </div>
     </div>
     <div id="liveMap" class="live-map"></div>
   </div>
-
 
   <div class="toast-container" id="toastContainer"></div>
   <script src="dashboard.js"></script>

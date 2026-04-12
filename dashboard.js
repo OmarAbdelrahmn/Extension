@@ -1,12 +1,13 @@
 'use strict';
 
 /* ═══════════════════════════════════════════════════════
-   RIDER LIVE OPS v3.1 — DASHBOARD JS
+   RIDER LIVE OPS v3.2 — DASHBOARD JS
    Changes:
-   - Map: static Leaflet load (no dynamic injection), invalidateSize fix
-   - New filter: no-orders (working/starting riders without active delivery)
-   - All stats derived from riders endpoint only
-   - Wallet hard-limit threshold = 500 SAR
+   - Status read directly from API employee.status field
+   - Light / Dark theme toggle (persisted to localStorage)
+   - Arabic / English language toggle (persisted)
+   - Map: dynamic Leaflet loader with local + CDN fallback
+   - Late filter uses isLate() helper (not status override)
    ═══════════════════════════════════════════════════════ */
 
 const API      = 'https://sa.me.logisticsbackoffice.com/api';
@@ -15,50 +16,260 @@ const COMPANY  = 463;
 const REFRESH_MS = 30_000;
 
 // ── STATE ──────────────────────────────────────────────
-let allRiders      = [];
-let filteredRiders = [];
-let currentFilter  = 'all';
+let allRiders       = [];
+let filteredRiders  = [];
+let currentFilter   = 'all';
 let selectedRiderId = null;
-let refreshTimer   = null;
-let searchQuery    = '';
-let sortBy         = 'name';
-let isLoading      = false;
-let currentPage    = 'dashboard'; // 'dashboard' | 'wallet' | 'map'
-let mapMarkers     = [];
-let leafletMap     = null;
+let refreshTimer    = null;
+let searchQuery     = '';
+let sortBy          = 'name';
+let isLoading       = false;
+let currentPage     = 'dashboard';
+let mapMarkers      = [];
+let leafletMap      = null;
+let currentLang     = localStorage.getItem('dash_lang')  || 'ar';
+let currentTheme    = localStorage.getItem('dash_theme') || 'dark';
+
+// ── TRANSLATIONS ───────────────────────────────────────
+const STRINGS = {
+  ar: {
+    status_working:'يعمل', status_starting:'بداية', status_break:'استراحة',
+    status_late:'متأخر', status_offline:'غير متصل',
+    brand_title:'عمليات السائقين', brand_sub:'جدة — المدينة 5',
+    nav_dashboard:'🏠 الرئيسية', nav_wallet:'💰 المحافظ', nav_map:'🗺 الخريطة',
+    stat_working:'يعمل', stat_starting:'بداية', stat_break:'استراحة',
+    stat_late:'متأخر', stat_orders:'📦 طلب', stat_all:'الكل',
+    last_update_label:'آخر تحديث', live:'مباشر', auto_refresh:'تحديث تلقائي',
+    filter_all:'الكل', filter_working:'يعمل', filter_starting:'بداية',
+    filter_break:'استراحة', filter_late:'⚠ متأخر', filter_orders:'📦 طلب',
+    filter_no_orders:'⚪ بدون طلب',
+    sort_label:'ترتيب:', sort_name:'الاسم', sort_status:'الحالة',
+    sort_deliveries:'التوصيلات', sort_util:'معدل الاستخدام', sort_late:'وقت التأخير',
+    search_placeholder:'بحث بالاسم أو الهاتف...',
+    cp_title:'أداء الشركة الإجمالي', cp_sub:'شركة 463 · جدة · المدينة 5',
+    cp_workers:'حالة السائقين', cp_checked_in:'يعمل / بداية', cp_late_lbl:'متأخر',
+    cp_offline:'غير متصل', cp_break:'في استراحة', cp_with_orders_lbl:'لديه طلب',
+    cp_orders_section:'الطلبات', cp_accepted:'طلب مقبول', cp_declined:'طلب مرفوض',
+    cp_util_section:'متوسط معدل الاستخدام', cp_vehicles_section:'توزيع المركبات',
+    cp_company_section:'ملخص الشركة', cp_footer_hint:'انقر على أي سائق من القائمة لعرض تفاصيله الكاملة',
+    cp_loading:'جاري التحميل...', cp_no_data:'لا توجد بيانات',
+    cp_table_id:'رقم الشركة', cp_table_active:'السائقون النشطون',
+    cp_table_deliveries:'إجمالي التوصيلات', cp_table_util:'متوسط الاستخدام',
+    cp_late_alert:'تنبيه:', cp_late_drivers:'سائق متأخر الآن', cp_reassign:'إعادة تعيين:',
+    tab_overview:'نظرة عامة', tab_deliveries:'التوصيلات', tab_shifts:'الوردية',
+    tab_performance:'الأداء', tab_groupbypoint:'📍 حسب النقطة',
+    card_shift:'الوردية الحالية', shift_start:'بداية الوردية', shift_end:'نهاية الوردية',
+    shift_remain:'المدة المتبقية', card_vehicle:'المركبة', vehicle_speed_lbl:'السرعة الافتراضية',
+    speed_unit:'كم/ساعة', card_wallet:'المحفظة', card_location:'الموقع الحالي',
+    loc_lat:'خط العرض', loc_lng:'خط الطول', loc_updated:'آخر تحديث',
+    open_map:'🗺 فتح في خرائط جوجل',
+    ds_completed:'مكتملة', ds_accepted:'مقبولة', ds_notified:'إشعارات',
+    ds_declined:'مرفوضة', ds_stacked:'مكدسة', ds_acceptance:'معدل القبول',
+    no_deliveries:'لا توجد توصيلات',
+    shifts_loading:'جاري تحميل الورديات...', shifts_id:'رقم الوردية',
+    shifts_start:'البداية', shifts_end:'النهاية', shifts_point:'نقطة الانطلاق',
+    shifts_status:'الحالة', shifts_duration:'المدة', no_shifts:'لا توجد ورديات',
+    perf_util:'معدل الاستخدام', perf_acceptance:'معدل القبول',
+    ts_worked:'وقت العمل', ts_late:'وقت التأخير',
+    ts_break:'وقت الاستراحة', ts_breaks:'عدد الاستراحات',
+    wallet_title:'💰 تقرير المحافظ', wallet_sub:'حد التحذير: 300 ر.س · حد الإيقاف: 500 ر.س',
+    wallet_over500:'🔴 فوق 500:', wallet_300_500:'🟠 300-500:', wallet_ok_label:'🟢 طبيعي:', wallet_total_label:'الكل:',
+    wallet_export:'تصدير Excel', wallet_col_num:'#', wallet_col_name:'الاسم',
+    wallet_col_phone:'الهاتف', wallet_col_point:'نقطة الانطلاق',
+    wallet_col_balance:'الرصيد', wallet_col_status:'الحالة', wallet_col_id:'معرف الموظف',
+    currency:'ر.س',
+    map_title:'🗺 خريطة السائقين المباشرة', map_with_orders:'لديه طلب نشط',
+    map_without_orders:'بدون طلب', map_late_legend:'متأخر',
+    map_total:'إجمالي على الخريطة:', map_driver:'سائق',
+    map_error:'تعذر تحميل مكتبة الخرائط',
+    map_error_sub:'حمّل ملفات Leaflet محلياً في مجلد libs/ أو تحقق من الاتصال',
+    loading:'جاري التحميل...', no_data:'لا يوجد سائقون مطابقون',
+    load_fail:'⚠ فشل التحميل', login_hint:'تأكد من تسجيل الدخول في المنصة',
+    has_order:'🟢 طلب', no_order:'⚪',
+    del_dispatched:'تم الإرسال', del_courier_notified:'تم الإشعار',
+    del_accepted:'مقبولة', del_near_pickup:'قرب الاستلام', del_picked_up:'تم الاستلام',
+    del_left_pickup:'غادر الاستلام', del_near_dropoff:'قرب التسليم',
+    del_completed:'مكتملة', del_cancelled:'ملغاة',
+    shift_published:'منشورة', shift_active:'نشطة', shift_finished:'منتهية', shift_draft:'مسودة',
+    wallet_over_hard:'تجاوز الحد الصعب', wallet_over_soft:'تجاوز الحد اللين', wallet_ok:'طبيعي',
+    delivery_pickup:'📦 الاستلام', delivery_dropoff:'🏠 التسليم',
+    group_no_data:'لا توجد بيانات', group_select_hint:'اختر هذا التبويب لعرض التجميع حسب نقطة الانطلاق',
+    pg_working:'يعمل', pg_starting:'بداية', pg_break:'استراحة', pg_late:'متأخر', pg_orders:'لديه طلب',
+    theme_light:'☀️ فاتح', theme_dark:'🌙 داكن', lang_toggle:'EN',
+    toast_loaded:'تم تحميل', toast_riders:'سائق', toast_fail:'فشل تحميل البيانات',
+    toast_exported:'تم تصدير تقرير المحفظة بنجاح', toast_no_export:'لا توجد بيانات للتصدير',
+    toast_auto_on:'تحديث تلقائي كل 30 ثانية', toast_auto_off:'تم إيقاف التحديث التلقائي',
+    hour_label:'س', min_short:'د', less_min:'< دقيقة',
+    not_started:'لم تبدأ بعد', ended:'انتهت', remaining:'متبقي',
+  },
+  en: {
+    status_working:'Working', status_starting:'Starting', status_break:'On Break',
+    status_late:'Late', status_offline:'Offline',
+    brand_title:'Rider Live Ops', brand_sub:'Jeddah — District 5',
+    nav_dashboard:'🏠 Dashboard', nav_wallet:'💰 Wallets', nav_map:'🗺 Map',
+    stat_working:'Working', stat_starting:'Starting', stat_break:'Break',
+    stat_late:'Late', stat_orders:'📦 Orders', stat_all:'All',
+    last_update_label:'Last Update', live:'Live', auto_refresh:'Auto Refresh',
+    filter_all:'All', filter_working:'Working', filter_starting:'Starting',
+    filter_break:'Break', filter_late:'⚠ Late', filter_orders:'📦 Orders',
+    filter_no_orders:'⚪ No Orders',
+    sort_label:'Sort:', sort_name:'Name', sort_status:'Status',
+    sort_deliveries:'Deliveries', sort_util:'Utilization', sort_late:'Late Time',
+    search_placeholder:'Search by name or phone...',
+    cp_title:'Overall Company Performance', cp_sub:'Company 463 · Jeddah · District 5',
+    cp_workers:'Rider Status', cp_checked_in:'Working / Starting', cp_late_lbl:'Late',
+    cp_offline:'Offline', cp_break:'On Break', cp_with_orders_lbl:'Has Order',
+    cp_orders_section:'Orders', cp_accepted:'Accepted Order', cp_declined:'Declined Order',
+    cp_util_section:'Average Utilization Rate', cp_vehicles_section:'Vehicle Distribution',
+    cp_company_section:'Company Summary', cp_footer_hint:'Click any rider in the list to view full details',
+    cp_loading:'Loading...', cp_no_data:'No data',
+    cp_table_id:'Company ID', cp_table_active:'Active Riders',
+    cp_table_deliveries:'Total Deliveries', cp_table_util:'Avg Utilization',
+    cp_late_alert:'Alert:', cp_late_drivers:'riders late now', cp_reassign:'Reassignments:',
+    tab_overview:'Overview', tab_deliveries:'Deliveries', tab_shifts:'Shifts',
+    tab_performance:'Performance', tab_groupbypoint:'📍 By Point',
+    card_shift:'Current Shift', shift_start:'Shift Start', shift_end:'Shift End',
+    shift_remain:'Remaining', card_vehicle:'Vehicle', vehicle_speed_lbl:'Default Speed',
+    speed_unit:'km/h', card_wallet:'Wallet', card_location:'Current Location',
+    loc_lat:'Latitude', loc_lng:'Longitude', loc_updated:'Last Updated',
+    open_map:'🗺 Open in Google Maps',
+    ds_completed:'Completed', ds_accepted:'Accepted', ds_notified:'Notified',
+    ds_declined:'Declined', ds_stacked:'Stacked', ds_acceptance:'Acceptance Rate',
+    no_deliveries:'No deliveries found',
+    shifts_loading:'Loading shifts...', shifts_id:'Shift ID',
+    shifts_start:'Start', shifts_end:'End', shifts_point:'Starting Point',
+    shifts_status:'Status', shifts_duration:'Duration', no_shifts:'No shifts found',
+    perf_util:'Utilization Rate', perf_acceptance:'Acceptance Rate',
+    ts_worked:'Worked Time', ts_late:'Late Time',
+    ts_break:'Break Time', ts_breaks:'Break Count',
+    wallet_title:'💰 Wallet Report', wallet_sub:'Soft Limit: 300 SAR · Hard Limit: 500 SAR',
+    wallet_over500:'🔴 Over 500:', wallet_300_500:'🟠 300-500:', wallet_ok_label:'🟢 Normal:', wallet_total_label:'Total:',
+    wallet_export:'Export Excel', wallet_col_num:'#', wallet_col_name:'Name',
+    wallet_col_phone:'Phone', wallet_col_point:'Starting Point',
+    wallet_col_balance:'Balance', wallet_col_status:'Status', wallet_col_id:'Employee ID',
+    currency:'SAR',
+    map_title:'🗺 Live Rider Map', map_with_orders:'Has Active Order',
+    map_without_orders:'No Order', map_late_legend:'Late',
+    map_total:'Total on map:', map_driver:'riders',
+    map_error:'Failed to load map library',
+    map_error_sub:'Copy Leaflet files locally into libs/ or check your connection',
+    loading:'Loading...', no_data:'No matching riders',
+    load_fail:'⚠ Load Failed', login_hint:'Make sure you are logged in to the platform',
+    has_order:'🟢 Order', no_order:'⚪',
+    del_dispatched:'Dispatched', del_courier_notified:'Notified',
+    del_accepted:'Accepted', del_near_pickup:'Near Pickup', del_picked_up:'Picked Up',
+    del_left_pickup:'Left Pickup', del_near_dropoff:'Near Dropoff',
+    del_completed:'Completed', del_cancelled:'Cancelled',
+    shift_published:'Published', shift_active:'Active', shift_finished:'Finished', shift_draft:'Draft',
+    wallet_over_hard:'Over Hard Limit', wallet_over_soft:'Over Soft Limit', wallet_ok:'Normal',
+    delivery_pickup:'📦 Pickup', delivery_dropoff:'🏠 Dropoff',
+    group_no_data:'No data available', group_select_hint:'Select this tab to view grouping by starting point',
+    pg_working:'Working', pg_starting:'Starting', pg_break:'Break', pg_late:'Late', pg_orders:'Has Order',
+    theme_light:'☀️ Light', theme_dark:'🌙 Dark', lang_toggle:'ع',
+    toast_loaded:'Loaded', toast_riders:'riders', toast_fail:'Failed to load data',
+    toast_exported:'Wallet report exported successfully', toast_no_export:'No data to export',
+    toast_auto_on:'Auto-refresh every 30 seconds', toast_auto_off:'Auto-refresh disabled',
+    hour_label:'h', min_short:'m', less_min:'< 1 min',
+    not_started:'Not started yet', ended:'Ended', remaining:'remaining',
+  }
+};
+
+function t(key) {
+  return (STRINGS[currentLang] && STRINGS[currentLang][key]) ||
+         (STRINGS['ar'][key]) || key;
+}
+
+// ── THEME & LANGUAGE ───────────────────────────────────
+
+function applyTheme() {
+  document.documentElement.setAttribute('data-theme', currentTheme);
+  const btn = document.getElementById('btnTheme');
+  if (btn) btn.textContent = currentTheme === 'dark' ? t('theme_light') : t('theme_dark');
+}
+
+function toggleTheme() {
+  currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+  localStorage.setItem('dash_theme', currentTheme);
+  applyTheme();
+}
+
+function applyLanguage() {
+  const isAr = currentLang === 'ar';
+  document.documentElement.dir  = isAr ? 'rtl' : 'ltr';
+  document.documentElement.lang = currentLang;
+
+  // Static data-i18n text nodes
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.dataset.i18n;
+    el.textContent = t(key);
+  });
+
+  // Placeholder attributes
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => {
+    el.placeholder = t(el.dataset.i18nPh);
+  });
+
+  // Sort options
+  const so = document.getElementById('sortSelect');
+  if (so) {
+    so.options[0].text = t('sort_name');
+    so.options[1].text = t('sort_status');
+    so.options[2].text = t('sort_deliveries');
+    so.options[3].text = t('sort_util');
+    so.options[4].text = t('sort_late');
+  }
+
+  const langBtn = document.getElementById('btnLang');
+  if (langBtn) langBtn.textContent = t('lang_toggle');
+  applyTheme(); // re-apply theme label text too
+
+  // Re-render if data present
+  if (allRiders.length) {
+    applyFiltersAndSort();
+    renderCompanyStats(computeStatsFromRiders(allRiders));
+    if (selectedRiderId) {
+      const riderData = allRiders.find(r => r.employee_id === selectedRiderId);
+      if (riderData) renderRiderHeader(riderData);
+    }
+  }
+}
+
+function toggleLang() {
+  currentLang = currentLang === 'ar' ? 'en' : 'ar';
+  localStorage.setItem('dash_lang', currentLang);
+  applyLanguage();
+}
 
 // ── LABEL MAPS ─────────────────────────────────────────
-const STATUS_LABEL = {
-  Working:  'يعمل',
-  starting: 'بداية',
-  break:    'استراحة',
-  offline:  'غير متصل',
-  late:     'متأخر',
-};
+// Keys match the lowercase status strings returned by the API
+
 const STATUS_BADGE = {
-  Working:  'badge-working',
+  working:  'badge-working',
   starting: 'badge-starting',
   break:    'badge-break',
   late:     'badge-late',
   offline:  'badge-offline',
 };
-const DELIVERY_AR = {
-  dispatched:       'تم الإرسال',
-  courier_notified: 'تم الإشعار',
-  accepted:         'مقبولة',
-  near_pickup:      'قرب الاستلام',
-  picked_up:        'تم الاستلام',
-  left_pickup:      'غادر الاستلام',
-  near_dropoff:     'قرب التسليم',
-  completed:        'مكتملة',
-  cancelled:        'ملغاة',
+
+const DELIVERY_STATUS_KEY = {
+  dispatched:       'del_dispatched',
+  courier_notified: 'del_courier_notified',
+  accepted:         'del_accepted',
+  near_pickup:      'del_near_pickup',
+  picked_up:        'del_picked_up',
+  left_pickup:      'del_left_pickup',
+  near_dropoff:     'del_near_dropoff',
+  completed:        'del_completed',
+  cancelled:        'del_cancelled',
 };
-const SHIFT_STATE_AR = {
-  PUBLISHED: 'منشورة',
-  ACTIVE:    'نشطة',
-  FINISHED:  'منتهية',
-  DRAFT:     'مسودة',
+
+const SHIFT_STATE_KEY = {
+  PUBLISHED: 'shift_published',
+  ACTIVE:    'shift_active',
+  FINISHED:  'shift_finished',
+  DRAFT:     'shift_draft',
 };
+
 const VEHICLE_ICONS = {
   Motorbike:  '🏍',
   Motor_Bike: '🏍',
@@ -68,18 +279,22 @@ const VEHICLE_ICONS = {
 
 // ── HELPERS ────────────────────────────────────────────
 
-function isLate(rider) {
-  if (!rider) return false;
-  if ((rider.performance?.time_spent?.late_seconds || 0) > 0) return true;
-  if (rider.active_shift_ended_at) {
-    const ended = new Date(rider.active_shift_ended_at);
-    if (ended < new Date() && ['working', 'starting'].includes(rider.status)) return true;
-  }
-  return false;
+/**
+ * Returns the raw status from the API (normalized to lowercase).
+ * The API field employee.status is the single source of truth.
+ */
+function effectiveStatus(rider) {
+  return (rider.status || 'offline').toLowerCase();
 }
 
-function effectiveStatus(rider) {
-  return isLate(rider) ? 'late' : (rider.status || 'offline');
+/**
+ * True when the rider has accumulated late seconds.
+ * Used ONLY for visual late indicators and the "late" filter tab.
+ * Does NOT override effectiveStatus().
+ */
+function isLate(rider) {
+  if (!rider) return false;
+  return (rider.performance?.time_spent?.late_seconds || 0) > 0;
 }
 
 function hasActiveOrder(rider) {
@@ -103,25 +318,25 @@ function avatarInitial(name) {
 
 function formatTime(iso) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' });
+  return new Date(iso).toLocaleTimeString(currentLang === 'ar' ? 'ar-SA' : 'en-GB',
+    { hour: '2-digit', minute: '2-digit' });
 }
 
 function formatDateTime(iso) {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString('ar-SA', {
-    month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit',
+  return new Date(iso).toLocaleString(currentLang === 'ar' ? 'ar-SA' : 'en-GB', {
+    month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 }
 
 function formatSeconds(sec) {
-  if (!sec || sec === 0) return '0 دقيقة';
+  if (!sec || sec === 0) return `0 ${t('min_short')}`;
   const h = Math.floor(sec / 3600);
   const m = Math.floor((sec % 3600) / 60);
   const parts = [];
-  if (h) parts.push(`${h}س`);
-  if (m) parts.push(`${m}د`);
-  return parts.join(' ') || '< دقيقة';
+  if (h) parts.push(`${h}${t('hour_label')}`);
+  if (m) parts.push(`${m}${t('min_short')}`);
+  return parts.join(' ') || t('less_min');
 }
 
 function shiftDuration(start, end) {
@@ -129,47 +344,46 @@ function shiftDuration(start, end) {
   const ms = new Date(end) - new Date(start);
   const h  = Math.floor(ms / 3_600_000);
   const m  = Math.floor((ms % 3_600_000) / 60_000);
-  return `${h}س ${m}د`;
+  return `${h}${t('hour_label')} ${m}${t('min_short')}`;
 }
 
 function shiftRemaining(start, end) {
   if (!start || !end) return { text: '—', pct: 0 };
   const now = new Date(), s = new Date(start), e = new Date(end);
-  if (now < s) return { text: 'لم تبدأ بعد', pct: 0 };
-  if (now > e) return { text: 'انتهت', pct: 100 };
+  if (now < s) return { text: t('not_started'), pct: 0 };
+  if (now > e) return { text: t('ended'), pct: 100 };
   const pct = Math.round(((now - s) / (e - s)) * 100);
   const rem = Math.floor((e - now) / 60_000);
-  return { text: `${Math.floor(rem / 60)}س ${rem % 60}د متبقي`, pct };
+  return {
+    text: `${Math.floor(rem / 60)}${t('hour_label')} ${rem % 60}${t('min_short')} ${t('remaining')}`,
+    pct,
+  };
 }
 
-// ── WALLET STATUS — threshold: 500 SAR = hard, 300 SAR = soft ──
-// Uses balance value directly; ignores API limit_status field so
-// the threshold is controlled here, not by server config.
 function walletStatus(status, balance) {
   if (balance !== undefined && balance !== null) {
-    if (balance >= 500) return { text: 'تجاوز الحد الصعب', cls: 'wallet-over-hard' };
-    if (balance >= 300) return { text: 'تجاوز الحد اللين',  cls: 'wallet-over-soft' };
-    return               { text: 'طبيعي',                  cls: 'wallet-ok'        };
+    if (balance >= 500) return { text: t('wallet_over_hard'), cls: 'wallet-over-hard' };
+    if (balance >= 300) return { text: t('wallet_over_soft'), cls: 'wallet-over-soft' };
+    return               { text: t('wallet_ok'),         cls: 'wallet-ok' };
   }
-  // Fallback to API status string when balance is unavailable
   const map = {
-    balance_over_hard_limit: { text: 'تجاوز الحد الصعب', cls: 'wallet-over-hard' },
-    balance_over_soft_limit: { text: 'تجاوز الحد اللين',  cls: 'wallet-over-soft' },
-    ok:                      { text: 'طبيعي',             cls: 'wallet-ok'        },
+    balance_over_hard_limit: { text: t('wallet_over_hard'), cls: 'wallet-over-hard' },
+    balance_over_soft_limit: { text: t('wallet_over_soft'), cls: 'wallet-over-soft' },
+    ok:                      { text: t('wallet_ok'),        cls: 'wallet-ok' },
   };
   return map[status] || { text: status || '—', cls: '' };
 }
 
 function toast(msg, type = 'info', ms = 3000) {
   const c = document.getElementById('toastContainer');
-  const t = document.createElement('div');
-  t.className = `toast toast-${type}`;
-  t.textContent = msg;
-  c.appendChild(t);
+  const el = document.createElement('div');
+  el.className = `toast toast-${type}`;
+  el.textContent = msg;
+  c.appendChild(el);
   setTimeout(() => {
-    t.style.opacity = '0';
-    t.style.transition = 'opacity 0.3s';
-    setTimeout(() => t.remove(), 300);
+    el.style.opacity = '0';
+    el.style.transition = 'opacity 0.3s';
+    setTimeout(() => el.remove(), 300);
   }, ms);
 }
 
@@ -187,7 +401,6 @@ async function apiFetch(url) {
 }
 
 async function fetchRiders() {
-  // size=200 to capture larger fleets without pagination
   const data = await apiFetch(
     `${API}/rider-live-operations/v1/external/city/${CITY_ID}/riders?page=0&size=100`
   );
@@ -206,24 +419,25 @@ async function fetchRiderShifts(id) {
   return apiFetch(`${API}/rooster/v3/employees/${id}/shifts?${qs}`);
 }
 
-// ── STATS FROM RIDERS (single source of truth) ─────────
+// ── STATS FROM RIDERS ──────────────────────────────────
 
 function computeStatsFromRiders(riders) {
   const stats = {
     working: 0, starting: 0, break: 0, late: 0, offline: 0,
     withOrders: 0, withoutOrders: 0, total: riders.length,
-    // wallet thresholds: 500 = hard, 300 = soft
     walletOverHard: 0, walletOverSoft: 0, walletOk: 0,
-    totalCompleted: 0,
-    byPoint: {},
-    vehicles: {},
-    utilTotal: 0, utilCount: 0,
-    ordersAccepted: 0, ordersDeclined: 0,
+    totalCompleted: 0, byPoint: {}, vehicles: {},
+    utilTotal: 0, utilCount: 0, ordersAccepted: 0, ordersDeclined: 0,
   };
 
   riders.forEach(r => {
+    // Use raw API status as single source of truth
     const st = effectiveStatus(r);
     if (stats[st] !== undefined) stats[st]++;
+
+    // Late counter is separate (based on late_seconds)
+    if (isLate(r)) stats.late++;
+
     const hasOrd = hasActiveOrder(r);
     if (hasOrd) {
       stats.withOrders++;
@@ -231,33 +445,30 @@ function computeStatsFromRiders(riders) {
       stats.withoutOrders++;
     }
 
-    // Wallet using balance-based thresholds (500 hard / 300 soft)
     const bal = r.wallet_info?.balance;
     if (bal !== undefined && bal !== null) {
-      if (bal >= 500)                stats.walletOverHard++;
-      else if (bal >= 300)           stats.walletOverSoft++;
-      else                           stats.walletOk++;
+      if (bal >= 500)      stats.walletOverHard++;
+      else if (bal >= 300) stats.walletOverSoft++;
+      else                 stats.walletOk++;
     }
 
-    stats.totalCompleted += r.deliveries_info?.completed_deliveries_count || 0;
-    stats.ordersAccepted += r.deliveries_info?.accepted_deliveries_count  || 0;
+    stats.totalCompleted  += r.deliveries_info?.completed_deliveries_count || 0;
+    stats.ordersAccepted  += r.deliveries_info?.accepted_deliveries_count  || 0;
 
-    // Group by starting point
     const ptName = r.starting_point?.name || 'غير محدد';
     if (!stats.byPoint[ptName]) {
-      stats.byPoint[ptName] = { working: 0, starting: 0, break: 0, late: 0, total: 0, withOrders: 0, withoutOrders: 0 };
+      stats.byPoint[ptName] = { working:0, starting:0, break:0, late:0, total:0, withOrders:0, withoutOrders:0 };
     }
     const pg = stats.byPoint[ptName];
     pg.total++;
     if (pg[st] !== undefined) pg[st]++;
+    if (isLate(r)) pg.late++;
     if (hasOrd) pg.withOrders++;
-    else if (['working', 'starting'].includes(st)) pg.withoutOrders++;
+    else if (['working','starting'].includes(st)) pg.withoutOrders++;
 
-    // Vehicles
     const vIcon = r.vehicle?.icon || 'Unknown';
     stats.vehicles[vIcon] = (stats.vehicles[vIcon] || 0) + 1;
 
-    // Utilization
     const util = r.performance?.utilization_rate;
     if (util !== undefined && util !== null) {
       stats.utilTotal += util;
@@ -286,36 +497,32 @@ function renderCompanyStats(stats) {
   const bar = document.getElementById('cp-utilBar');
   if (bar) bar.style.width = `${Math.min(stats.avgUtil, 100)}%`;
 
-  // Late banner
   const banner = document.getElementById('cpLateBanner');
   if (banner) {
     banner.style.display = stats.late > 0 ? 'flex' : 'none';
-    setText('cp-lateWorkers', stats.late);
-    setText('cp-reassignments', 0);
+    setText('cp-lateWorkers',    stats.late);
+    setText('cp-reassignments',  0);
   }
 
-  // Vehicles
   const vRow = document.getElementById('cp-vehicles');
   if (vRow) {
     const entries = Object.entries(stats.vehicles);
     if (entries.length) {
       vRow.innerHTML = entries.map(([icon, count]) => {
         const emoji = VEHICLE_ICONS[icon] || '🛵';
-        return `
-          <div class="cp-vehicle-chip">
-            <span class="cp-vehicle-chip-icon">${emoji}</span>
-            <div><div class="cp-vehicle-chip-name">${icon}</div></div>
-            <span class="cp-vehicle-chip-count">${count}</span>
-          </div>`;
+        return `<div class="cp-vehicle-chip">
+          <span class="cp-vehicle-chip-icon">${emoji}</span>
+          <div><div class="cp-vehicle-chip-name">${icon}</div></div>
+          <span class="cp-vehicle-chip-count">${count}</span>
+        </div>`;
       }).join('');
     } else {
-      vRow.innerHTML = '<span class="cp-loading-text">لا توجد بيانات</span>';
+      vRow.innerHTML = `<span class="cp-loading-text">${t('cp_no_data')}</span>`;
     }
   }
 
   setText('cp-withOrders', stats.withOrders);
 
-  // Company table
   const tbody = document.getElementById('cp-statsBody');
   if (tbody) {
     tbody.innerHTML = `
@@ -335,7 +542,7 @@ function renderCompanyStats(stats) {
 
 function buildRiderCard(rider) {
   const status   = effectiveStatus(rider);
-  const late     = status === 'late';
+  const late     = isLate(rider);
   const hasOrder = hasActiveOrder(rider);
   const avCls    = avatarClass(rider.name);
   const delivs   = rider.deliveries_info?.completed_deliveries_count || 0;
@@ -345,6 +552,9 @@ function buildRiderCard(rider) {
   card.className = `rider-card${late ? ' late-card' : ''}${isSelected ? ' selected' : ''}`;
   card.dataset.id = rider.employee_id;
 
+  const statusLabel = t(`status_${status}`) || status;
+  const badgeCls    = STATUS_BADGE[status] || 'badge-offline';
+
   card.innerHTML = `
     ${late ? '<div class="late-indicator"></div>' : ''}
     <div class="rider-avatar ${avCls}">${avatarInitial(rider.name)}</div>
@@ -353,8 +563,8 @@ function buildRiderCard(rider) {
       <div class="rider-card-sub">${rider.starting_point?.name || '—'} · ${rider.phone_number || '—'}</div>
     </div>
     <div class="rider-card-meta">
-      <span class="badge ${STATUS_BADGE[status] || 'badge-offline'}">${STATUS_LABEL[status] || status}</span>
-      <span class="deliveries-mini">${hasOrder ? '🟢 طلب' : '⚪'} ${delivs}</span>
+      <span class="badge ${badgeCls}">${statusLabel}</span>
+      <span class="deliveries-mini">${hasOrder ? t('has_order') : t('no_order')} ${delivs}</span>
     </div>`;
 
   card.addEventListener('click', () => selectRider(rider.employee_id));
@@ -365,7 +575,7 @@ function renderRiderList() {
   const list = document.getElementById('riderList');
   list.innerHTML = '';
   if (!filteredRiders.length) {
-    list.innerHTML = '<div class="no-data">لا يوجد سائقون مطابقون</div>';
+    list.innerHTML = `<div class="no-data">${t('no_data')}</div>`;
     return;
   }
   const frag = document.createDocumentFragment();
@@ -379,12 +589,12 @@ function renderRiderList() {
 
 function updateHeaderStats(riders) {
   const stats = computeStatsFromRiders(riders);
-  setText('stat-working',    stats.working);
-  setText('stat-starting',   stats.starting);
-  setText('stat-break',      stats.break);
-  setText('stat-late',       stats.late);
-  setText('stat-orders',     stats.withOrders);
-  setText('stat-total',      stats.total);
+  setText('stat-working',  stats.working);
+  setText('stat-starting', stats.starting);
+  setText('stat-break',    stats.break);
+  setText('stat-late',     stats.late);
+  setText('stat-orders',   stats.withOrders);
+  setText('stat-total',    stats.total);
   return stats;
 }
 
@@ -405,10 +615,13 @@ function applyFiltersAndSort() {
       list = list.filter(r => hasActiveOrder(r));
       break;
     case 'no-orders':
-      // Active riders with NO current delivery
       list = list.filter(r =>
         ['working', 'starting'].includes(effectiveStatus(r)) && !hasActiveOrder(r)
       );
+      break;
+    case 'late':
+      // Late filter uses isLate() — based on late_seconds, not API status field
+      list = list.filter(r => isLate(r));
       break;
     case 'all':
       break;
@@ -418,7 +631,7 @@ function applyFiltersAndSort() {
 
   list.sort((a, b) => {
     switch (sortBy) {
-      case 'name':        return cleanName(a.name).localeCompare(cleanName(b.name), 'ar');
+      case 'name':        return cleanName(a.name).localeCompare(cleanName(b.name), currentLang);
       case 'status':      return effectiveStatus(a).localeCompare(effectiveStatus(b));
       case 'deliveries':  return (b.deliveries_info?.completed_deliveries_count || 0) - (a.deliveries_info?.completed_deliveries_count || 0);
       case 'utilization': return (b.performance?.utilization_rate || 0) - (a.performance?.utilization_rate || 0);
@@ -427,11 +640,9 @@ function applyFiltersAndSort() {
     }
   });
 
-  // Always bubble late riders to the top in 'all' view
+  // Bubble late riders to top in 'all' view
   if (currentFilter === 'all') {
-    list.sort((a, b) =>
-      (effectiveStatus(b) === 'late' ? 1 : 0) - (effectiveStatus(a) === 'late' ? 1 : 0)
-    );
+    list.sort((a, b) => (isLate(b) ? 1 : 0) - (isLate(a) ? 1 : 0));
   }
 
   filteredRiders = list;
@@ -449,7 +660,7 @@ async function loadRiders(silent = false) {
 
   if (!silent) {
     document.getElementById('riderList').innerHTML = `
-      <div class="loading-state"><div class="spinner"></div><p>جاري تحميل السائقين...</p></div>`;
+      <div class="loading-state"><div class="spinner"></div><p>${t('loading')}</p></div>`;
   }
 
   try {
@@ -457,15 +668,15 @@ async function loadRiders(silent = false) {
     const stats = updateHeaderStats(allRiders);
     applyFiltersAndSort();
     renderCompanyStats(stats);
-    setText('lastUpdate', new Date().toLocaleTimeString('ar-SA'));
-    if (!silent) toast(`تم تحميل ${allRiders.length} سائق`, 'success');
+    setText('lastUpdate', new Date().toLocaleTimeString(currentLang === 'ar' ? 'ar-SA' : 'en-GB'));
+    if (!silent) toast(`${t('toast_loaded')} ${allRiders.length} ${t('toast_riders')}`, 'success');
   } catch (err) {
     console.error('loadRiders:', err);
     if (!silent) {
       document.getElementById('riderList').innerHTML = `
-        <div class="no-data">⚠ فشل التحميل<br><small>${err.message}</small><br><br>
-        <small>تأكد من تسجيل الدخول في المنصة</small></div>`;
-      toast('فشل تحميل البيانات', 'error');
+        <div class="no-data">${t('load_fail')}<br><small>${err.message}</small><br><br>
+        <small>${t('login_hint')}</small></div>`;
+      toast(t('toast_fail'), 'error');
     }
   } finally {
     isLoading = false;
@@ -495,7 +706,7 @@ async function selectRider(id) {
     loadShifts(id);
   } catch (err) {
     console.error('selectRider:', err);
-    toast('فشل تحميل تفاصيل السائق', 'error');
+    toast(t('toast_fail'), 'error');
   }
 }
 
@@ -510,7 +721,7 @@ async function loadShifts(id) {
     loading.style.display = 'none';
     content.style.display = 'block';
   } catch (err) {
-    loading.innerHTML = `<p style="color:var(--red)">⚠ فشل تحميل الورديات</p>`;
+    loading.innerHTML = `<p style="color:var(--red)">⚠ ${t('toast_fail')}</p>`;
   }
 }
 
@@ -527,12 +738,12 @@ function renderRiderHeader(rider) {
   setText('detailName', cleanName(rider.name));
 
   const badge = document.getElementById('detailStatusBadge');
-  badge.textContent = STATUS_LABEL[status] || status;
+  badge.textContent = t(`status_${status}`) || status;
   badge.className   = `status-badge ${STATUS_BADGE[status] || 'badge-offline'}`;
 
   setText('detailPhone',   `📞 ${rider.phone_number || '—'}`);
   setText('detailPoint',   `📍 ${rider.starting_point?.name || '—'}`);
-  setText('detailCompany', `🏢 شركة ${rider.company_id || '—'}`);
+  setText('detailCompany', `🏢 ${t('cp_sub').split('·')[0].trim()} ${rider.company_id || '—'}`);
 }
 
 function renderOverviewTab(rider) {
@@ -548,13 +759,12 @@ function renderOverviewTab(rider) {
 
   const v = rider.vehicle;
   setText('vehicleName',  v?.name || '—');
-  setText('vehicleSpeed', v?.default_speed || '—');
+  setText('vehicleSpeed', v?.default_speed ? `${v.default_speed} ${t('speed_unit')}` : '—');
 
   const wal = rider.wallet_info;
   const bal = wal?.balance;
-  setText('walletBalance', bal !== undefined ? `${bal.toFixed(2)} ر.س` : '—');
+  setText('walletBalance', bal !== undefined ? `${bal.toFixed(2)} ${t('currency')}` : '—');
 
-  // Use balance-based threshold
   const ws = walletStatus(wal?.limit_status, bal);
   const wsEl = document.getElementById('walletStatus');
   if (wsEl) { wsEl.textContent = ws.text; wsEl.className = `wallet-status ${ws.cls}`; }
@@ -568,6 +778,7 @@ function renderOverviewTab(rider) {
   if (link) {
     if (loc?.latitude && loc?.longitude) {
       link.href = `https://www.google.com/maps?q=${loc.latitude},${loc.longitude}`;
+      link.textContent = t('open_map');
       link.style.display = 'inline-block';
     } else {
       link.style.display = 'none';
@@ -589,7 +800,7 @@ function renderDeliveriesTab(rider) {
   const list = document.getElementById('deliveriesList');
   const deliveries = di.latest_deliveries || [];
   if (!deliveries.length) {
-    list.innerHTML = '<div class="no-data">لا توجد توصيلات</div>';
+    list.innerHTML = `<div class="no-data">${t('no_deliveries')}</div>`;
     return;
   }
 
@@ -599,17 +810,17 @@ function renderDeliveriesTab(rider) {
   deliveries.forEach(d => {
     const tl = d.timeline || [];
     const tlHTML = STEPS.map((step, i) => {
-      const ev      = tl.find(t => t.status === step);
-      const isDone  = !!ev;
-      const dotCls  = isDone ? 'done' : (d.status === step ? 'current' : '');
-      const lineCls = isDone ? 'done' : '';
+      const ev     = tl.find(t2 => t2.status === step);
+      const isDone = !!ev;
+      const dotCls = isDone ? 'done' : (d.status === step ? 'current' : '');
+      const linCls = isDone ? 'done' : '';
       return `
         <div class="timeline-step">
           <div class="timeline-dot ${dotCls}"></div>
-          <div class="tl-label">${DELIVERY_AR[step] || step}</div>
+          <div class="tl-label">${t(DELIVERY_STATUS_KEY[step] || step)}</div>
           ${ev ? `<div class="tl-time">${formatTime(ev.timestamp)}</div>` : ''}
         </div>
-        ${i < STEPS.length - 1 ? `<div class="timeline-line ${lineCls}"></div>` : ''}`;
+        ${i < STEPS.length - 1 ? `<div class="timeline-line ${linCls}"></div>` : ''}`;
     }).join('');
 
     const stCls = `ds-${d.status || 'dispatched'}`;
@@ -619,11 +830,11 @@ function renderDeliveriesTab(rider) {
       <div class="delivery-card-header">
         <span class="delivery-code">${d.order_code || '—'}</span>
         <span class="delivery-vendor">${d.vendor_name || '—'}</span>
-        <span class="delivery-status-badge ${stCls}">${DELIVERY_AR[d.status] || d.status}</span>
+        <span class="delivery-status-badge ${stCls}">${t(DELIVERY_STATUS_KEY[d.status] || d.status)}</span>
       </div>
       <div class="delivery-addresses">
-        <div class="addr-box"><div class="addr-label">📦 الاستلام</div><div class="addr-val">${d.pickup_address || '—'}</div></div>
-        <div class="addr-box"><div class="addr-label">🏠 التسليم</div><div class="addr-val">${d.dropoff_address || '—'}</div></div>
+        <div class="addr-box"><div class="addr-label">${t('delivery_pickup')}</div><div class="addr-val">${d.pickup_address || '—'}</div></div>
+        <div class="addr-box"><div class="addr-label">${t('delivery_dropoff')}</div><div class="addr-val">${d.dropoff_address || '—'}</div></div>
       </div>
       <div class="delivery-timeline">${tlHTML}</div>`;
     list.appendChild(card);
@@ -633,7 +844,7 @@ function renderDeliveriesTab(rider) {
 function renderShiftsTab(shifts) {
   const tbody = document.getElementById('shiftsTableBody');
   if (!shifts?.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="no-data">لا توجد ورديات</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="6" class="no-data">${t('no_shifts')}</td></tr>`;
     return;
   }
   const sorted = [...shifts].sort((a, b) => new Date(b.start) - new Date(a.start));
@@ -641,30 +852,31 @@ function renderShiftsTab(shifts) {
   tbody.innerHTML = sorted.map(s => {
     const sd = new Date(s.start), ed = new Date(s.end);
     const isActive = sd <= now && ed >= now;
+    const stateLabel = t(SHIFT_STATE_KEY[s.state] || s.state);
     return `
       <tr class="${isActive ? 'active-shift' : ''}">
         <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-muted)">${s.id}</td>
         <td>${formatDateTime(s.start)}</td>
         <td>${formatTime(s.end)}</td>
         <td style="font-family:var(--font-main)">${s.starting_point_name || '—'}</td>
-        <td><span class="shift-state-badge state-${s.state}">${SHIFT_STATE_AR[s.state] || s.state}${isActive ? ' 🟢' : ''}</span></td>
+        <td><span class="shift-state-badge state-${s.state}">${stateLabel}${isActive ? ' 🟢' : ''}</span></td>
         <td>${shiftDuration(s.start, s.end)}</td>
       </tr>`;
   }).join('');
 }
 
 function renderPerformanceTab(rider) {
-  const perf   = rider.performance     || {};
-  const time   = perf.time_spent       || {};
-  const circ   = 251.2;
+  const perf  = rider.performance  || {};
+  const time  = perf.time_spent    || {};
+  const circ  = 251.2;
 
-  const util   = Math.min(Math.round((perf.utilization_rate || 0) * 100), 100);
+  const util  = Math.min(Math.round((perf.utilization_rate || 0) * 100), 100);
   const utilEl = document.getElementById('utilCircleFill');
   if (utilEl) utilEl.setAttribute('stroke-dashoffset', (circ - circ * util / 100).toFixed(1));
   setText('perfUtilVal', `${util}%`);
 
-  const acc    = Math.round((perf.acceptance_rate || 0) * 100);
-  const accEl  = document.getElementById('accCircleFill');
+  const acc   = Math.round((perf.acceptance_rate || 0) * 100);
+  const accEl = document.getElementById('accCircleFill');
   if (accEl) accEl.setAttribute('stroke-dashoffset', (circ - circ * acc / 100).toFixed(1));
   setText('perfAccVal', `${acc}%`);
 
@@ -677,8 +889,8 @@ function renderPerformanceTab(rider) {
 // ── TAB SWITCHING ──────────────────────────────────────
 
 function switchTab(name) {
-  document.querySelectorAll('.detail-tab').forEach(t =>
-    t.classList.toggle('active', t.dataset.tab === name)
+  document.querySelectorAll('.detail-tab').forEach(t2 =>
+    t2.classList.toggle('active', t2.dataset.tab === name)
   );
   document.querySelectorAll('.tab-content').forEach(c =>
     c.classList.toggle('active', c.id === `tab-${name}`)
@@ -695,7 +907,7 @@ function renderGroupByPoint() {
   const entries = Object.entries(stats.byPoint).sort((a, b) => b[1].total - a[1].total);
 
   if (!entries.length) {
-    container.innerHTML = '<div class="no-data">لا توجد بيانات</div>';
+    container.innerHTML = `<div class="no-data">${t('group_no_data')}</div>`;
     return;
   }
 
@@ -704,22 +916,22 @@ function renderGroupByPoint() {
       <div class="point-group-header">
         <span class="point-group-icon">📍</span>
         <span class="point-group-name">${ptName}</span>
-        <span class="point-group-total">${data.total} سائق</span>
+        <span class="point-group-total">${data.total} ${t('map_driver')}</span>
       </div>
       <div class="point-group-stats">
-        <div class="pg-stat pg-working"><span>${data.working}</span><small>يعمل</small></div>
-        <div class="pg-stat pg-starting"><span>${data.starting}</span><small>بداية</small></div>
-        <div class="pg-stat pg-break"><span>${data.break}</span><small>استراحة</small></div>
-        <div class="pg-stat pg-late"><span>${data.late}</span><small>متأخر</small></div>
-        <div class="pg-stat pg-orders"><span>${data.withOrders}</span><small>لديه طلب</small></div>
+        <div class="pg-stat pg-working"><span>${data.working}</span><small>${t('pg_working')}</small></div>
+        <div class="pg-stat pg-starting"><span>${data.starting}</span><small>${t('pg_starting')}</small></div>
+        <div class="pg-stat pg-break"><span>${data.break}</span><small>${t('pg_break')}</small></div>
+        <div class="pg-stat pg-late"><span>${data.late}</span><small>${t('pg_late')}</small></div>
+        <div class="pg-stat pg-orders"><span>${data.withOrders}</span><small>${t('pg_orders')}</small></div>
       </div>
       <div class="point-group-riders">
         ${allRiders
           .filter(r => (r.starting_point?.name || 'غير محدد') === ptName)
           .map(r => {
-            const st     = effectiveStatus(r);
+            const late2  = isLate(r);
             const hasOrd = hasActiveOrder(r);
-            return `<span class="pg-rider-chip ${st === 'late' ? 'chip-late' : ''}" title="${cleanName(r.name)}">
+            return `<span class="pg-rider-chip ${late2 ? 'chip-late' : ''}" title="${cleanName(r.name)}">
               ${hasOrd ? '🟢' : '⚪'} ${cleanName(r.name).split(' ')[0]}
             </span>`;
           }).join('')}
@@ -728,7 +940,7 @@ function renderGroupByPoint() {
   `).join('');
 }
 
-// ── WALLET REPORT PAGE ─────────────────────────────────
+// ── PAGE NAVIGATION ────────────────────────────────────
 
 function showWalletPage() {
   currentPage = 'wallet';
@@ -753,15 +965,16 @@ function showMapPage() {
   document.getElementById('walletPage').style.display    = 'none';
   document.getElementById('mapPage').style.display       = 'flex';
   updateNavButtons();
-  // Double rAF ensures the DOM has painted and the container has its real height
   requestAnimationFrame(() => requestAnimationFrame(() => initMap()));
 }
 
 function updateNavButtons() {
-  document.querySelectorAll('.nav-btn').forEach(b => {
-    b.classList.toggle('active', b.dataset.page === currentPage);
-  });
+  document.querySelectorAll('.nav-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.page === currentPage)
+  );
 }
+
+// ── WALLET REPORT ──────────────────────────────────────
 
 function renderWalletReport() {
   const tbody = document.getElementById('walletTableBody');
@@ -774,7 +987,7 @@ function renderWalletReport() {
   });
 
   if (!riders.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="no-data">لا توجد بيانات</td></tr>';
+    tbody.innerHTML = `<tr><td colspan="7" class="no-data">${t('cp_no_data')}</td></tr>`;
     return;
   }
 
@@ -782,14 +995,8 @@ function renderWalletReport() {
     const wal = r.wallet_info || {};
     const bal = wal.balance;
     const ws  = walletStatus(wal.limit_status, bal);
-
-    // Row highlighting based on balance thresholds (500 hard / 300 soft)
-    const statusClass = (bal >= 500) ? 'wallet-row-danger'
-                      : (bal >= 300) ? 'wallet-row-warn'
-                      : '';
-    const balColor    = (bal >= 500) ? 'var(--red)'
-                      : (bal >= 300) ? 'var(--orange)'
-                      : 'var(--green)';
+    const statusClass = (bal >= 500) ? 'wallet-row-danger' : (bal >= 300) ? 'wallet-row-warn' : '';
+    const balColor    = (bal >= 500) ? 'var(--red)' : (bal >= 300) ? 'var(--orange)' : 'var(--green)';
 
     return `
       <tr class="${statusClass}">
@@ -797,19 +1004,15 @@ function renderWalletReport() {
         <td style="font-family:var(--font-main);font-weight:600">${cleanName(r.name)}</td>
         <td style="font-family:var(--font-mono);color:var(--text-muted)">${r.phone_number || '—'}</td>
         <td style="font-family:var(--font-main);color:var(--text-secondary)">${r.starting_point?.name || '—'}</td>
-        <td style="font-family:var(--font-mono);font-weight:700;color:${balColor}">${bal !== undefined ? bal.toFixed(2) : '—'} ر.س</td>
+        <td style="font-family:var(--font-mono);font-weight:700;color:${balColor}">${bal !== undefined ? bal.toFixed(2) : '—'} ${t('currency')}</td>
         <td><span class="wallet-status ${ws.cls}">${ws.text}</span></td>
         <td style="font-family:var(--font-mono)">${r.employee_id}</td>
       </tr>`;
   }).join('');
 
-  // Summary counts using balance thresholds (500 / 300)
   const overHard = riders.filter(r => (r.wallet_info?.balance || 0) >= 500).length;
-  const overSoft = riders.filter(r => {
-    const b = r.wallet_info?.balance || 0;
-    return b >= 300 && b < 500;
-  }).length;
-  const ok = riders.filter(r => (r.wallet_info?.balance || 0) < 300).length;
+  const overSoft = riders.filter(r => { const b = r.wallet_info?.balance || 0; return b >= 300 && b < 500; }).length;
+  const ok       = riders.filter(r => (r.wallet_info?.balance || 0) < 300).length;
 
   setText('wallet-summary-hard', overHard);
   setText('wallet-summary-soft', overSoft);
@@ -820,23 +1023,24 @@ function renderWalletReport() {
 // ── EXCEL DOWNLOAD ─────────────────────────────────────
 
 function downloadWalletExcel() {
-  if (!allRiders.length) { toast('لا توجد بيانات للتصدير', 'error'); return; }
+  if (!allRiders.length) { toast(t('toast_no_export'), 'error'); return; }
 
   const BOM     = '\uFEFF';
-  const headers = ['#', 'الاسم', 'الهاتف', 'نقطة الانطلاق', 'الرصيد (ر.س)', 'حالة المحفظة', 'معرف الموظف', 'الحالة'];
-  const rows    = allRiders.map((r, i) => {
+  const headers = [
+    t('wallet_col_num'), t('wallet_col_name'), t('wallet_col_phone'),
+    t('wallet_col_point'), `${t('wallet_col_balance')} (${t('currency')})`,
+    t('wallet_col_status'), t('wallet_col_id'), t('shifts_status'),
+  ];
+  const rows = allRiders.map((r, i) => {
     const wal = r.wallet_info || {};
     const bal = wal.balance;
     const ws  = walletStatus(wal.limit_status, bal);
     return [
-      i + 1,
-      cleanName(r.name),
-      r.phone_number || '',
+      i + 1, cleanName(r.name), r.phone_number || '',
       r.starting_point?.name || '',
       bal !== undefined ? bal.toFixed(2) : '',
-      ws.text,
-      r.employee_id,
-      STATUS_LABEL[effectiveStatus(r)] || '',
+      ws.text, r.employee_id,
+      t(`status_${effectiveStatus(r)}`) || '',
     ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
   });
 
@@ -848,34 +1052,69 @@ function downloadWalletExcel() {
   a.download = `wallet-report-${new Date().toISOString().slice(0, 10)}.csv`;
   a.click();
   URL.revokeObjectURL(url);
-  toast('تم تصدير تقرير المحفظة بنجاح', 'success');
+  toast(t('toast_exported'), 'success');
 }
 
-// ── MAP PAGE ───────────────────────────────────────────
-// Leaflet is loaded statically in the HTML <head>.
-// buildMap() calls invalidateSize() to handle cases where the container
-// was hidden (display:none) during initialization.
+// ── MAP ────────────────────────────────────────────────
+/*
+  Chrome Extension (Manifest V3) blocks external scripts.
+  Fix: place Leaflet files locally:
+    libs/leaflet.css
+    libs/leaflet.js
+  Download from: https://leafletjs.com/download.html
+*/
+
+function loadLeafletThenInit(mapEl) {
+  if (typeof L !== 'undefined') { buildMap(mapEl); return; }
+
+  // Try local file first (works in Chrome extension)
+  const localJs  = 'libs/leaflet.js';
+  const localCss = 'libs/leaflet.css';
+  const cdnJs    = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+  const cdnCss   = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+
+  // Inject CSS
+  const link = document.createElement('link');
+  link.rel   = 'stylesheet';
+  link.href  = localCss;
+  link.onerror = () => { link.href = cdnCss; };
+  document.head.appendChild(link);
+
+  // Inject JS
+  const script    = document.createElement('script');
+  script.src      = localJs;
+  script.onload   = () => buildMap(mapEl);
+  script.onerror  = () => {
+    // Fallback to CDN (works when opened as webpage, not extension)
+    const s2   = document.createElement('script');
+    s2.src     = cdnJs;
+    s2.onload  = () => buildMap(mapEl);
+    s2.onerror = () => showMapError(mapEl);
+    document.head.appendChild(s2);
+  };
+  document.head.appendChild(script);
+}
+
+function showMapError(mapEl) {
+  mapEl.innerHTML = `
+    <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
+                height:100%;color:var(--text-muted);gap:12px;font-size:13px;padding:40px;text-align:center">
+      <div style="font-size:40px">🗺</div>
+      <div style="font-size:15px;color:var(--text-primary);font-weight:700">${t('map_error')}</div>
+      <div style="font-size:12px;color:var(--text-muted);max-width:340px;line-height:1.7">${t('map_error_sub')}</div>
+      <code style="font-size:11px;background:var(--bg-card);padding:8px 14px;border-radius:6px;color:var(--amber)">
+        libs/leaflet.css &nbsp;|&nbsp; libs/leaflet.js
+      </code>
+    </div>`;
+}
 
 function initMap() {
   const mapEl = document.getElementById('liveMap');
   if (!mapEl) return;
-
-  if (typeof L === 'undefined') {
-    mapEl.innerHTML = `
-      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;
-                  height:100%;color:var(--text-muted);gap:10px;font-size:13px;padding:40px">
-        <div style="font-size:32px">🗺</div>
-        <div>تعذر تحميل مكتبة الخرائط</div>
-        <div style="font-size:11px;color:var(--text-muted)">تأكد من اتصال الإنترنت ثم أعد تحميل الصفحة</div>
-      </div>`;
-    return;
-  }
-
-  buildMap(mapEl);
+  loadLeafletThenInit(mapEl);
 }
 
 function buildMap(mapEl) {
-  // Remove previous instance if exists
   if (leafletMap) {
     try { leafletMap.remove(); } catch (_) {}
     leafletMap = null;
@@ -889,8 +1128,7 @@ function buildMap(mapEl) {
     maxZoom:     19,
   }).addTo(leafletMap);
 
-  // Force Leaflet to recalculate container size (fixes display:none init issue)
-  setTimeout(() => leafletMap && leafletMap.invalidateSize(), 150);
+  setTimeout(() => leafletMap && leafletMap.invalidateSize(), 200);
 
   mapMarkers.forEach(m => { try { m.remove(); } catch (_) {} });
   mapMarkers = [];
@@ -898,7 +1136,7 @@ function buildMap(mapEl) {
   const activeRiders = allRiders.filter(r =>
     r.current_location?.latitude &&
     r.current_location?.longitude &&
-    ['working', 'starting', 'late'].includes(effectiveStatus(r))
+    ['working', 'starting', 'break'].includes(effectiveStatus(r))
   );
 
   setText('map-rider-count',    activeRiders.length);
@@ -908,43 +1146,44 @@ function buildMap(mapEl) {
   setText('map-without-orders', withoutOrders);
 
   activeRiders.forEach(rider => {
-    const loc     = rider.current_location;
-    const hasOrd  = hasActiveOrder(rider);
-    const isLateR = effectiveStatus(rider) === 'late';
-    const color   = isLateR ? '#ef4444' : (hasOrd ? '#22c55e' : '#f59e0b');
+    const loc    = rider.current_location;
+    const hasOrd = hasActiveOrder(rider);
+    const late   = isLate(rider);
+    const color  = late ? '#ef4444' : (hasOrd ? '#22c55e' : '#f59e0b');
 
     const icon = L.divIcon({
       html: `<div style="
         width:32px;height:32px;border-radius:50%;
-        background:${color};
-        border:3px solid rgba(255,255,255,0.8);
+        background:${color};border:3px solid rgba(255,255,255,0.8);
         display:flex;align-items:center;justify-content:center;
         font-size:14px;font-weight:900;color:#000;
-        box-shadow:0 2px 8px rgba(0,0,0,0.4);cursor:pointer;
-      ">${hasOrd ? '📦' : '🛵'}</div>`,
-      className:  '',
-      iconSize:   [32, 32],
-      iconAnchor: [16, 16],
+        box-shadow:0 2px 8px rgba(0,0,0,0.4);cursor:pointer;">
+        ${hasOrd ? '📦' : '🛵'}
+      </div>`,
+      className: '', iconSize: [32, 32], iconAnchor: [16, 16],
     });
+
+    const popupContent = `
+      <div dir="${currentLang === 'ar' ? 'rtl' : 'ltr'}" style="font-family:Cairo,sans-serif;min-width:200px">
+        <strong style="font-size:14px">${cleanName(rider.name)}</strong><br>
+        <span style="color:#94a3b8;font-size:12px">${rider.starting_point?.name || '—'}</span><br>
+        <span style="color:${color};font-weight:700">${hasOrd ? '🟢 ' + t('map_with_orders') : '⚪ ' + t('map_without_orders')}</span><br>
+        <span style="font-size:11px;color:#64748b">
+          ${rider.deliveries_info?.completed_deliveries_count || 0} ${t('ds_completed')}
+        </span>
+      </div>`;
 
     const marker = L.marker([loc.latitude, loc.longitude], { icon })
       .addTo(leafletMap)
-      .bindPopup(`
-        <div dir="rtl" style="font-family:Cairo,sans-serif;min-width:200px">
-          <strong style="font-size:14px">${cleanName(rider.name)}</strong><br>
-          <span style="color:#94a3b8;font-size:12px">${rider.starting_point?.name || '—'}</span><br>
-          <span style="color:${color};font-weight:700">${hasOrd ? '🟢 لديه طلب نشط' : '⚪ لا يوجد طلب'}</span><br>
-          <span style="font-size:11px;color:#64748b">
-            ${rider.deliveries_info?.completed_deliveries_count || 0} توصيلة مكتملة
-          </span>
-        </div>
-      `);
+      .bindPopup(popupContent);
     mapMarkers.push(marker);
   });
 
   if (mapMarkers.length > 0) {
-    const group = L.featureGroup(mapMarkers);
-    leafletMap.fitBounds(group.getBounds().pad(0.1));
+    try {
+      const group = L.featureGroup(mapMarkers);
+      leafletMap.fitBounds(group.getBounds().pad(0.1));
+    } catch (_) {}
   }
 }
 
@@ -954,12 +1193,8 @@ function startAutoRefresh() {
   stopAutoRefresh();
   refreshTimer = setInterval(() => {
     loadRiders(true);
-    if (currentPage === 'map' && leafletMap) {
-      buildMap(document.getElementById('liveMap'));
-    }
-    if (currentPage === 'wallet') {
-      renderWalletReport();
-    }
+    if (currentPage === 'map' && leafletMap) buildMap(document.getElementById('liveMap'));
+    if (currentPage === 'wallet') renderWalletReport();
     if (selectedRiderId) {
       fetchRiderDetails(selectedRiderId).then(rider => {
         renderRiderHeader(rider);
@@ -979,7 +1214,17 @@ function stopAutoRefresh() {
 
 document.addEventListener('DOMContentLoaded', () => {
 
+  // Apply persisted theme + language immediately
+  applyTheme();
+  applyLanguage();
+
   loadRiders();
+
+  // Theme toggle
+  document.getElementById('btnTheme')?.addEventListener('click', toggleTheme);
+
+  // Language toggle
+  document.getElementById('btnLang')?.addEventListener('click', toggleLang);
 
   // Refresh button
   document.getElementById('btnRefresh').addEventListener('click', () => {
@@ -992,13 +1237,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Auto-refresh toggle
   const toggle = document.getElementById('autoRefreshToggle');
   toggle.addEventListener('change', () => {
-    if (toggle.checked) {
-      startAutoRefresh();
-      toast('تحديث تلقائي كل 30 ثانية', 'info');
-    } else {
-      stopAutoRefresh();
-      toast('تم إيقاف التحديث التلقائي', 'info');
-    }
+    if (toggle.checked) { startAutoRefresh(); toast(t('toast_auto_on'), 'info'); }
+    else                { stopAutoRefresh();  toast(t('toast_auto_off'), 'info'); }
   });
   if (toggle.checked) startAutoRefresh();
 
@@ -1049,7 +1289,7 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.rider-card').forEach(c => c.classList.remove('selected'));
   });
 
-  // Nav buttons
+  // Nav
   document.getElementById('navDashboard').addEventListener('click', showDashboardPage);
   document.getElementById('navWallet').addEventListener('click', showWalletPage);
   document.getElementById('navMap').addEventListener('click', showMapPage);
