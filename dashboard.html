@@ -7,6 +7,10 @@
   <link rel="stylesheet" href="dashboard.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+
+  <!-- Leaflet: loaded statically so it's ready before initMap() is called -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
 
@@ -81,6 +85,7 @@
         <button class="filter-tab" data-status="break">استراحة</button>
         <button class="filter-tab late-tab" data-status="late">⚠ متأخر</button>
         <button class="filter-tab orders-tab" data-status="orders">📦 طلب</button>
+        <button class="filter-tab no-orders-tab" data-status="no-orders">⚪ بدون طلب</button>
       </div>
       <div class="sort-bar">
         <span class="sort-label">ترتيب:</span>
@@ -356,11 +361,11 @@
     <div class="wallet-page-header">
       <div>
         <h2>💰 تقرير المحافظ</h2>
-        <span>عرض أرصدة محافظ جميع السائقين</span>
+        <span>حد التحذير: 300 ر.س · حد الإيقاف: 500 ر.س</span>
       </div>
       <div class="wallet-page-summary">
-        <div class="ws-pill ws-danger">🔴 حد صعب: <b id="wallet-summary-hard">—</b></div>
-        <div class="ws-pill ws-warn">🟠 حد لين: <b id="wallet-summary-soft">—</b></div>
+        <div class="ws-pill ws-danger">🔴 فوق 500: <b id="wallet-summary-hard">—</b></div>
+        <div class="ws-pill ws-warn">🟠 300-500: <b id="wallet-summary-soft">—</b></div>
         <div class="ws-pill ws-ok">🟢 طبيعي: <b id="wallet-summary-ok">—</b></div>
         <div class="ws-pill ws-total">الكل: <b id="wallet-total-riders">—</b></div>
       </div>
