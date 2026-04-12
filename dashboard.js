@@ -1,9 +1,11 @@
 'use strict';
 
 /* ═══════════════════════════════════════════════════════
-   RIDER LIVE OPS v3.3 — DASHBOARD JS
+   RIDER LIVE OPS v3.4 — DASHBOARD JS
    Fixes:
-   - isLate() now checks BOTH api status==='late' AND late_seconds>0
+   - isLate() uses ONLY live api status==='late' (not cumulative late_seconds)
+   - Map tiles are theme-aware: dark_all ↔ light_all via mapTileUrl()
+   - Theme toggle hot-swaps tile URL via mapTileLayer.setUrl() — no rebuild
    - computeStatsFromRiders: no double-counting of late riders
    - Detail tabs made sticky (via .detail-sticky-top wrapper in HTML)
    - Leaflet loaded from libs/ folder (web_accessible_resources)
@@ -26,6 +28,7 @@ let isLoading       = false;
 let currentPage     = 'dashboard';
 let mapMarkers      = [];
 let leafletMap      = null;
+let mapTileLayer    = null;   // reference kept so we can hot-swap tiles on theme change
 let currentLang     = localStorage.getItem('dash_lang')  || 'ar';
 let currentTheme    = localStorage.getItem('dash_theme') || 'dark';
 
@@ -190,6 +193,12 @@ function toggleTheme() {
   currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
   localStorage.setItem('dash_theme', currentTheme);
   applyTheme();
+
+  // Hot-swap Leaflet tile layer so the map reflects the new theme immediately.
+  // We change the URL on the existing layer — no full map rebuild needed.
+  if (mapTileLayer) {
+    mapTileLayer.setUrl(mapTileUrl());
+  }
 }
 
 function applyLanguage() {
@@ -282,17 +291,25 @@ function effectiveStatus(rider) {
 }
 
 /**
- * TRUE when a rider is considered "late".
- * Checks BOTH the API status field AND late_seconds > 0.
- * Used for visual indicators, the late filter tab, and late badge.
+ * TRUE when a rider is CURRENTLY late right now.
  *
- * FIX: previously isLate only checked late_seconds, so riders whose
- * API status was already "late" were double-counted in computeStatsFromRiders.
+ * ── Why only effectiveStatus() and NOT late_seconds? ──────────
+ * rider.performance.time_spent.late_seconds is a CUMULATIVE counter
+ * that grows all shift long. A rider who was late at 9 AM and then
+ * recovered will still have late_seconds > 0 at 3 PM, even though
+ * they are perfectly on time now.
+ *
+ * The API's rider.status field is updated in real-time and is set to
+ * "late" only when the rider is CURRENTLY in a late state. That is
+ * the correct signal for the live filter, badge, and map marker colour.
+ *
+ * late_seconds is still used in the Performance tab to show total
+ * accumulated late time — which is a valid historical metric.
+ * ──────────────────────────────────────────────────────────────
  */
 function isLate(rider) {
   if (!rider) return false;
-  return effectiveStatus(rider) === 'late' ||
-         (rider.performance?.time_spent?.late_seconds || 0) > 0;
+  return effectiveStatus(rider) === 'late';
 }
 
 function hasActiveOrder(rider) {
@@ -1100,6 +1117,18 @@ function downloadWalletExcel() {
     └── manifest.json
 */
 
+/* ── MAP TILE URL ─────────────────────────────────────
+   CartoDB provides matching light and dark tile sets.
+   dark_all  → used for dark theme
+   light_all → used for light theme
+   The tile URL is the ONLY thing that needs to change
+   when the user toggles the theme.
+   ─────────────────────────────────────────────────── */
+function mapTileUrl() {
+  const variant = currentTheme === 'light' ? 'light_all' : 'dark_all';
+  return `https://{s}.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}{r}.png`;
+}
+
 function loadLeafletThenInit(mapEl) {
   if (typeof L !== 'undefined') { buildMap(mapEl); return; }
 
@@ -1155,12 +1184,14 @@ function initMap() {
 function buildMap(mapEl) {
   if (leafletMap) {
     try { leafletMap.remove(); } catch (_) {}
-    leafletMap = null;
+    leafletMap    = null;
+    mapTileLayer  = null;
   }
 
   leafletMap = L.map(mapEl, { zoomControl: true }).setView([21.3891, 39.8579], 11);
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  // Store the tile layer reference so toggleTheme() can hot-swap it with setUrl()
+  mapTileLayer = L.tileLayer(mapTileUrl(), {
     attribution: '© OpenStreetMap © CARTO',
     subdomains:  'abcd',
     maxZoom:     19,
