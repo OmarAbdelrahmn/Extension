@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>عمليات السائقين المباشرة — جدة</title>
+  <link rel="stylesheet" href="dashboard.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="header">
+    <div class="header-brand">
+      <span class="brand-icon">🛵</span>
+      <div class="brand-text">
+        <h1>عمليات السائقين</h1>
+        <span class="brand-sub">جدة — المدينة 5</span>
+      </div>
+    </div>
+    <div class="header-stats" id="headerStats">
+      <div class="stat-pill working"><span id="stat-working">0</span> يعمل</div>
+      <div class="stat-pill starting"><span id="stat-starting">0</span> بداية</div>
+      <div class="stat-pill break"><span id="stat-break">0</span> استراحة</div>
+      <div class="stat-pill late"><span id="stat-late">0</span> متأخر</div>
+      <div class="stat-pill total"><span id="stat-total">0</span> الكل</div>
+    </div>
+    <div class="header-actions">
+      <div class="live-badge">
+        <span class="live-dot"></span>
+        <span>مباشر</span>
+      </div>
+      <div class="last-update-wrap">
+        <span class="update-label">آخر تحديث</span>
+        <span class="update-time" id="lastUpdate">—</span>
+      </div>
+      <button class="btn-refresh" id="btnRefresh" title="تحديث البيانات">
+        <svg id="refreshIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"/>
+          <polyline points="1 20 1 14 7 14"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+      </button>
+      <div class="auto-refresh-wrap">
+        <label class="toggle-label">تحديث تلقائي</label>
+        <label class="toggle">
+          <input type="checkbox" id="autoRefreshToggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN LAYOUT -->
+  <div class="app-layout">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+      <div class="search-wrapper">
+        <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="searchInput" placeholder="بحث بالاسم أو الهاتف..." class="search-input">
+        <button class="search-clear" id="searchClear" style="display:none">✕</button>
+      </div>
+      <div class="filter-tabs">
+        <button class="filter-tab active" data-status="all">الكل</button>
+        <button class="filter-tab" data-status="working">يعمل</button>
+        <button class="filter-tab" data-status="starting">بداية</button>
+        <button class="filter-tab" data-status="break">استراحة</button>
+        <button class="filter-tab late-tab" data-status="late">⚠ متأخر</button>
+      </div>
+      <div class="sort-bar">
+        <span class="sort-label">ترتيب حسب:</span>
+        <select class="sort-select" id="sortSelect">
+          <option value="name">الاسم</option>
+          <option value="status">الحالة</option>
+          <option value="deliveries">التوصيلات</option>
+          <option value="utilization">معدل الاستخدام</option>
+          <option value="late">وقت التأخير</option>
+        </select>
+      </div>
+      <div class="rider-list" id="riderList">
+        <div class="loading-state">
+          <div class="spinner"></div>
+          <p>جاري التحميل...</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- DETAIL PANEL -->
+    <main class="detail-panel" id="detailPanel">
+
+      <!-- ══ COMPANY STATS — shown when no rider selected ══ -->
+      <div id="emptyState" class="empty-state">
+
+        <div class="company-panel" id="companyPanel">
+
+          <div class="cp-header">
+            <div class="cp-header-brand">
+              <span class="cp-main-icon">🏢</span>
+              <div>
+                <h3 class="cp-title">أداء الشركة الإجمالي</h3>
+                <span class="cp-sub">شركة 463 · جدة · المدينة 5</span>
+              </div>
+            </div>
+            <div id="cpLoadingSpinner" class="cp-spinner-wrap">
+              <div class="spinner sm-spinner"></div>
+            </div>
+          </div>
+
+          <!-- Late Alert Banner -->
+          <div class="cp-late-banner" id="cpLateBanner" style="display:none">
+            <span class="cp-banner-icon">⚠</span>
+            <span>تنبيه: <b id="cp-lateWorkers">0</b> سائق متأخر الآن</span>
+            <span class="cp-separator">|</span>
+            <span>إعادة تعيين: <b id="cp-reassignments">0</b></span>
+          </div>
+
+          <!-- Workers -->
+          <div class="cp-section-label">حالة السائقين</div>
+          <div class="cp-row">
+            <div class="cp-card cp-green">
+              <div class="cp-icon-top">✅</div>
+              <div class="cp-num" id="cp-checkedIn">—</div>
+              <div class="cp-lbl">تسجيل دخول</div>
+            </div>
+            <div class="cp-card cp-red">
+              <div class="cp-icon-top">⏰</div>
+              <div class="cp-num" id="cp-checkedInLate">—</div>
+              <div class="cp-lbl">دخول متأخر</div>
+            </div>
+            <div class="cp-card cp-orange">
+              <div class="cp-icon-top">❌</div>
+              <div class="cp-num" id="cp-notCheckedIn">—</div>
+              <div class="cp-lbl">لم يسجل دخول</div>
+            </div>
+            <div class="cp-card cp-blue">
+              <div class="cp-icon-top">☕</div>
+              <div class="cp-num" id="cp-onBreak">—</div>
+              <div class="cp-lbl">في استراحة</div>
+            </div>
+          </div>
+
+          <!-- Orders -->
+          <div class="cp-section-label">الطلبات</div>
+          <div class="cp-row">
+            <div class="cp-card cp-amber cp-wide">
+              <div class="cp-icon-top">📦</div>
+              <div class="cp-num" id="cp-ordersAccepted">—</div>
+              <div class="cp-lbl">طلب مقبول</div>
+            </div>
+            <div class="cp-card cp-red cp-wide">
+              <div class="cp-icon-top">🚫</div>
+              <div class="cp-num" id="cp-ordersDeclined">—</div>
+              <div class="cp-lbl">طلب مرفوض</div>
+            </div>
+          </div>
+
+          <!-- Utilization -->
+          <div class="cp-section-label">معدل الاستخدام الإجمالي</div>
+          <div class="cp-util-wrap">
+            <div class="cp-bar-track">
+              <div class="cp-bar-fill-el" id="cp-utilBar" style="width:0%"></div>
+            </div>
+            <span class="cp-util-num" id="cp-utilRate">—</span>
+          </div>
+
+          <!-- Vehicles -->
+          <div class="cp-section-label">توزيع المركبات</div>
+          <div class="cp-vehicles-row" id="cp-vehicles">
+            <span class="cp-loading-text">جاري التحميل...</span>
+          </div>
+
+          <!-- Company Stats Table -->
+          <div class="cp-section-label">ملخص الشركة</div>
+          <div class="cp-table-wrap">
+            <table class="cp-table">
+              <thead>
+                <tr>
+                  <th>رقم الشركة</th>
+                  <th>السائقون النشطون</th>
+                  <th>إجمالي الطلبات</th>
+                  <th>معدل الاستخدام</th>
+                </tr>
+              </thead>
+              <tbody id="cp-statsBody">
+                <tr><td colspan="4" class="no-data">جاري التحميل...</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="cp-footer-hint">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            انقر على أي سائق من القائمة لعرض تفاصيله الكاملة
+          </div>
+        </div>
+
+      </div>
+      <!-- ══ END COMPANY STATS ══ -->
+
+      <!-- ══ RIDER DETAIL — hidden until selected ══ -->
+      <div class="rider-detail" id="riderDetail" style="display:none">
+
+        <div class="detail-header">
+          <div class="detail-avatar" id="detailAvatar">?</div>
+          <div class="detail-info">
+            <div class="detail-name-row">
+              <h2 class="detail-name" id="detailName">—</h2>
+              <span class="status-badge" id="detailStatusBadge">—</span>
+            </div>
+            <div class="detail-meta">
+              <span class="meta-item" id="detailPhone">📞 —</span>
+              <span class="meta-item" id="detailPoint">📍 —</span>
+              <span class="meta-item" id="detailCompany">🏢 —</span>
+            </div>
+          </div>
+          <button class="close-detail" id="closeDetail">✕</button>
+        </div>
+
+        <div class="detail-tabs">
+          <button class="detail-tab active" data-tab="overview">نظرة عامة</button>
+          <button class="detail-tab" data-tab="deliveries">التوصيلات</button>
+          <button class="detail-tab" data-tab="shifts">الوردية</button>
+          <button class="detail-tab" data-tab="performance">الأداء</button>
+        </div>
+
+        <!-- TAB: Overview -->
+        <div class="tab-content active" id="tab-overview">
+          <div class="cards-grid">
+            <div class="info-card">
+              <div class="card-header"><span class="card-icon">⏰</span><h3>الوردية الحالية</h3></div>
+              <div class="shift-row"><span class="shift-label">بداية الوردية</span><span class="shift-val" id="shiftStart">—</span></div>
+              <div class="shift-row"><span class="shift-label">نهاية الوردية</span><span class="shift-val" id="shiftEnd">—</span></div>
+              <div class="shift-row"><span class="shift-label">المدة المتبقية</span><span class="shift-val accent" id="shiftRemain">—</span></div>
+              <div class="shift-progress-bar"><div class="shift-progress-fill" id="shiftProgressFill" style="width:0%"></div></div>
+            </div>
+            <div class="info-card">
+              <div class="card-header"><span class="card-icon">🏍</span><h3>المركبة</h3></div>
+              <div class="vehicle-name" id="vehicleName">—</div>
+              <div class="vehicle-meta"><span>السرعة الافتراضية: <b id="vehicleSpeed">—</b> كم/ساعة</span></div>
+            </div>
+            <div class="info-card">
+              <div class="card-header"><span class="card-icon">💰</span><h3>المحفظة</h3></div>
+              <div class="wallet-amount" id="walletBalance">—</div>
+              <div class="wallet-status" id="walletStatus">—</div>
+            </div>
+            <div class="info-card">
+              <div class="card-header"><span class="card-icon">📍</span><h3>الموقع الحالي</h3></div>
+              <div class="coord-row"><span>خط العرض</span><span class="mono" id="locLat">—</span></div>
+              <div class="coord-row"><span>خط الطول</span><span class="mono" id="locLng">—</span></div>
+              <div class="coord-row"><span>آخر تحديث</span><span class="mono small" id="locUpdated">—</span></div>
+              <a class="map-btn" id="mapLink" href="#" target="_blank">🗺 فتح في خرائط جوجل</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: Deliveries -->
+        <div class="tab-content" id="tab-deliveries">
+          <div class="delivery-stats-row">
+            <div class="dstat"><span class="dstat-num" id="ds-completed">0</span><span class="dstat-label">مكتملة</span></div>
+            <div class="dstat"><span class="dstat-num" id="ds-accepted">0</span><span class="dstat-label">مقبولة</span></div>
+            <div class="dstat"><span class="dstat-num" id="ds-notified">0</span><span class="dstat-label">إشعارات</span></div>
+            <div class="dstat"><span class="dstat-num" id="ds-declined">0</span><span class="dstat-label">مرفوضة</span></div>
+            <div class="dstat"><span class="dstat-num" id="ds-stacked">0</span><span class="dstat-label">مكدسة</span></div>
+            <div class="dstat"><span class="dstat-num" id="ds-acceptance">0%</span><span class="dstat-label">معدل القبول</span></div>
+          </div>
+          <div class="deliveries-list" id="deliveriesList">
+            <p class="no-data">لا توجد بيانات توصيل</p>
+          </div>
+        </div>
+
+        <!-- TAB: Shifts -->
+        <div class="tab-content" id="tab-shifts">
+          <div class="shifts-table-wrap">
+            <div class="shifts-loading" id="shiftsLoading"><div class="spinner"></div><p>جاري تحميل الورديات...</p></div>
+            <div id="shiftsContent" style="display:none">
+              <table class="shifts-table">
+                <thead>
+                  <tr>
+                    <th>رقم الوردية</th><th>البداية</th><th>النهاية</th>
+                    <th>نقطة الانطلاق</th><th>الحالة</th><th>المدة</th>
+                  </tr>
+                </thead>
+                <tbody id="shiftsTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- TAB: Performance -->
+        <div class="tab-content" id="tab-performance">
+          <div class="perf-grid">
+            <div class="perf-card">
+              <div class="perf-circle">
+                <svg viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="40" fill="none" stroke="#1a1f2e" stroke-width="10"/>
+                  <circle cx="50" cy="50" r="40" fill="none" stroke="#f59e0b" stroke-width="10"
+                    stroke-dasharray="251.2" stroke-dashoffset="251.2" id="utilCircleFill"
+                    stroke-linecap="round" transform="rotate(-90 50 50)"/>
+                </svg>
+                <span class="perf-circle-val" id="perfUtilVal">0%</span>
+              </div>
+              <div class="perf-label">معدل الاستخدام</div>
+            </div>
+            <div class="perf-card">
+              <div class="perf-circle">
+                <svg viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r="40" fill="none" stroke="#1a1f2e" stroke-width="10"/>
+                  <circle cx="50" cy="50" r="40" fill="none" stroke="#22c55e" stroke-width="10"
+                    stroke-dasharray="251.2" stroke-dashoffset="251.2" id="accCircleFill"
+                    stroke-linecap="round" transform="rotate(-90 50 50)"/>
+                </svg>
+                <span class="perf-circle-val" id="perfAccVal">0%</span>
+              </div>
+              <div class="perf-label">معدل القبول</div>
+            </div>
+            <div class="perf-time-stats">
+              <div class="time-stat"><span class="ts-icon">⏱</span><span class="ts-label">وقت العمل</span><span class="ts-val" id="ts-worked">—</span></div>
+              <div class="time-stat late-time"><span class="ts-icon">⚠</span><span class="ts-label">وقت التأخير</span><span class="ts-val" id="ts-late">—</span></div>
+              <div class="time-stat"><span class="ts-icon">☕</span><span class="ts-label">وقت الاستراحة</span><span class="ts-val" id="ts-break">—</span></div>
+              <div class="time-stat"><span class="ts-icon">🔁</span><span class="ts-label">عدد الاستراحات</span><span class="ts-val" id="ts-breaks">—</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end rider-detail -->
+    </main>
+
+  </div><!-- end app-layout -->
+
+  <div class="toast-container" id="toastContainer"></div>
+  <script src="dashboard.js"></script>
+</body>
+</html>

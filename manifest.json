@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Rider Live Ops - عمليات السائقين",
+  "version": "2.0.0",
+  "description": "لوحة تحكم عمليات السائقين المباشرة - جدة",
+  "permissions": ["storage", "tabs", "cookies"],
+  "host_permissions": [
+    "https://sa.me.logisticsbackoffice.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

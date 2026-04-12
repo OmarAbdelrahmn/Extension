@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <title>عمليات السائقين</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap');
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 280px;
+      background: #0a0d14;
+      color: #e2e8f0;
+      font-family: 'Cairo', sans-serif;
+      direction: rtl;
+    }
+    .popup-header {
+      background: linear-gradient(135deg, #1a1f2e, #0d1117);
+      border-bottom: 1px solid #f59e0b30;
+      padding: 20px;
+      text-align: center;
+    }
+    .popup-icon {
+      font-size: 40px;
+      display: block;
+      margin-bottom: 8px;
+      animation: float 3s ease-in-out infinite;
+    }
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+    h1 {
+      font-size: 16px;
+      font-weight: 900;
+      color: #f59e0b;
+      letter-spacing: 0.5px;
+    }
+    p.sub {
+      font-size: 11px;
+      color: #64748b;
+      margin-top: 4px;
+    }
+    .popup-body {
+      padding: 16px;
+    }
+    .open-btn {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      border: none;
+      border-radius: 10px;
+      color: #0a0d14;
+      font-family: 'Cairo', sans-serif;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .open-btn:hover {
+      background: linear-gradient(135deg, #fbbf24, #f59e0b);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px #f59e0b40;
+    }
+    .open-btn:active { transform: translateY(0); }
+    .status-info {
+      margin-top: 12px;
+      padding: 10px 12px;
+      background: #1a1f2e;
+      border-radius: 8px;
+      border: 1px solid #2d3748;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: #94a3b8;
+    }
+    .dot {
+      width: 8px;
+      height: 8px;
+      background: #22c55e;
+      border-radius: 50%;
+      flex-shrink: 0;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; box-shadow: 0 0 0 0 #22c55e50; }
+      50% { opacity: 0.7; box-shadow: 0 0 0 6px #22c55e00; }
+    }
+    .version {
+      text-align: center;
+      font-size: 10px;
+      color: #374151;
+      padding: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="popup-header">
+    <span class="popup-icon">🛵</span>
+    <h1>عمليات السائقين المباشرة</h1>
+    <p class="sub">جدة — المنطقة 5</p>
+  </div>
+  <div class="popup-body">
+    <button class="open-btn" id="openDashboard">
+      <span>🚀</span>
+      <span>فتح لوحة التحكم</span>
+    </button>
+    <div class="status-info">
+      <div class="dot"></div>
+      <span>اضغط لفتح اللوحة الكاملة في تبويب جديد</span>
+    </div>
+  </div>
+  <div class="version">v2.1.0 — Rider Live Ops</div>
+  <script src="popup.js"></script>
+</body>
+</html>
