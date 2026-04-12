@@ -448,9 +448,9 @@ async function fetchRiderDetails(id) {
 }
 
 async function fetchRiderShifts(id) {
-  const now   = new Date();
-  const start = new Date(now - 7 * 86_400_000).toISOString();
-  const end   = new Date(now + 7 * 86_400_000).toISOString();
+  const ms    = Date.now();
+  const start = new Date(ms - 7 * 86_400_000).toISOString();
+  const end   = new Date(ms + 14 * 86_400_000).toISOString();
   const qs = new URLSearchParams({ city_id: CITY_ID, start_at: start, end_at: end });
   return apiFetch(`${API}/rooster/v3/employees/${id}/shifts?${qs}`);
 }
@@ -738,7 +738,7 @@ async function loadRiders(silent = false) {
           const msg = currentLang === 'ar' 
             ? `تغيرت حالة السائق ${name} (#${id}) من «${oldLbl}» إلى «${newLbl}»`
             : `${name} (#${id}): ${oldLbl} ➔ ${newLbl}`;
-          toast(msg, 'info', 5000);
+          toast(msg, 'info', 10000);
         }
         previousStatuses[id] = newStatus;
       });
