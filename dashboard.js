@@ -1,10 +1,11 @@
 'use strict';
 
 /* ═══════════════════════════════════════════════════════
-   RIDER LIVE OPS v2.1 — DASHBOARD JS
-   - Company stats from /city/5/company/463
-   - Riders list + live detail + shifts
-   - Auto refresh, search, filter, sort
+   RIDER LIVE OPS v3.0 — DASHBOARD JS
+   - All stats derived from riders endpoint
+   - Has-order filter, group-by-point tab
+   - Wallet report page + Excel download
+   - Live map page
    ═══════════════════════════════════════════════════════ */
 
 const API      = 'https://sa.me.logisticsbackoffice.com/api';
@@ -21,6 +22,9 @@ let refreshTimer   = null;
 let searchQuery    = '';
 let sortBy         = 'name';
 let isLoading      = false;
+let currentPage    = 'dashboard'; // 'dashboard' | 'wallet' | 'map'
+let mapMarkers     = [];
+let leafletMap     = null;
 
 // ── LABEL MAPS ─────────────────────────────────────────
 const STATUS_LABEL = {
@@ -55,10 +59,10 @@ const SHIFT_STATE_AR = {
   DRAFT:     'مسودة',
 };
 const VEHICLE_ICONS = {
-  Motorbike: '🏍',
+  Motorbike:  '🏍',
   Motor_Bike: '🏍',
-  Bicycle:   '🚲',
-  Car:       '🚗',
+  Bicycle:    '🚲',
+  Car:        '🚗',
 };
 
 // ── HELPERS ────────────────────────────────────────────
@@ -75,6 +79,10 @@ function isLate(rider) {
 
 function effectiveStatus(rider) {
   return isLate(rider) ? 'late' : (rider.status || 'offline');
+}
+
+function hasActiveOrder(rider) {
+  return !!(rider.deliveries_info?.has_active_deliveries);
 }
 
 function cleanName(name) {
@@ -164,10 +172,6 @@ async function apiFetch(url) {
   return res.json();
 }
 
-async function fetchCompanyStats() {
-  return apiFetch(`${API}/rider-live-operations/v1/external/city/${CITY_ID}/company/${COMPANY}`);
-}
-
 async function fetchRiders() {
   const data = await apiFetch(
     `${API}/rider-live-operations/v1/external/city/${CITY_ID}/riders?page=0&size=100`
@@ -187,92 +191,127 @@ async function fetchRiderShifts(id) {
   return apiFetch(`${API}/rooster/v3/employees/${id}/shifts?${qs}`);
 }
 
-// ── COMPANY STATS RENDER ───────────────────────────────
+// ── STATS FROM RIDERS ──────────────────────────────────
 
-async function loadCompanyStats(silent = false) {
-  const spinner = document.getElementById('cpLoadingSpinner');
-  if (spinner) spinner.style.display = 'flex';
-  try {
-    const d = await fetchCompanyStats();
-    renderCompanyStats(d);
-  } catch (err) {
-    console.warn('Company stats error:', err.message);
-    if (!silent) toast('تعذّر تحميل بيانات الشركة', 'error');
-  } finally {
-    if (spinner) spinner.style.display = 'none';
-  }
+function computeStatsFromRiders(riders) {
+  const stats = {
+    working: 0, starting: 0, break: 0, late: 0, offline: 0,
+    withOrders: 0, total: riders.length,
+    walletOverHard: 0, walletOverSoft: 0,
+    totalCompleted: 0,
+    byPoint: {},
+    vehicles: {},
+    utilTotal: 0, utilCount: 0,
+    ordersAccepted: 0, ordersDeclined: 0,
+  };
+
+  riders.forEach(r => {
+    const st = effectiveStatus(r);
+    if (stats[st] !== undefined) stats[st]++;
+    if (hasActiveOrder(r)) stats.withOrders++;
+
+    const ws = r.wallet_info?.limit_status;
+    if (ws === 'balance_over_hard_limit') stats.walletOverHard++;
+    if (ws === 'balance_over_soft_limit') stats.walletOverSoft++;
+
+    stats.totalCompleted += r.deliveries_info?.completed_deliveries_count || 0;
+    stats.ordersAccepted += r.deliveries_info?.accepted_deliveries_count  || 0;
+
+    // by starting point
+    const ptName = r.starting_point?.name || 'غير محدد';
+    if (!stats.byPoint[ptName]) stats.byPoint[ptName] = { working: 0, starting: 0, break: 0, late: 0, total: 0, withOrders: 0 };
+    stats.byPoint[ptName].total++;
+    if (stats.byPoint[ptName][st] !== undefined) stats.byPoint[ptName][st]++;
+    if (hasActiveOrder(r)) stats.byPoint[ptName].withOrders++;
+
+    // vehicles
+    const vIcon = r.vehicle?.icon || 'Unknown';
+    stats.vehicles[vIcon] = (stats.vehicles[vIcon] || 0) + 1;
+
+    // utilization
+    const util = r.performance?.utilization_rate;
+    if (util !== undefined && util !== null) {
+      stats.utilTotal += util;
+      stats.utilCount++;
+    }
+  });
+
+  stats.avgUtil = stats.utilCount > 0
+    ? Math.round((stats.utilTotal / stats.utilCount) * 100)
+    : 0;
+
+  return stats;
 }
 
-function renderCompanyStats(d) {
-  const w = d.workers || {};
-  const o = d.orders  || {};
+// ── COMPANY STATS RENDER (from riders) ────────────────
 
-  // Workers
-  setText('cp-checkedIn',     w.checked_in     ?? '—');
-  setText('cp-checkedInLate', w.checked_in_late ?? '—');
-  setText('cp-notCheckedIn',  w.not_checked_in  ?? '—');
-  setText('cp-onBreak',       w.workers_on_break ?? '—');
+function renderCompanyStats(stats) {
+  setText('cp-checkedIn',     stats.working + stats.starting);
+  setText('cp-checkedInLate', stats.late);
+  setText('cp-notCheckedIn',  stats.offline);
+  setText('cp-onBreak',       stats.break);
+  setText('cp-ordersAccepted', stats.ordersAccepted);
+  setText('cp-ordersDeclined', stats.ordersDeclined || 0);
+  setText('cp-utilRate',      `${stats.avgUtil}%`);
 
-  // Orders
-  setText('cp-ordersAccepted', o.accepted ?? '—');
-  setText('cp-ordersDeclined', o.declined ?? '—');
-
-  // Utilization bar
-  const util    = d.utilization_rate ?? 0;
-  const utilPct = Math.min(Math.round((util / 5) * 100), 100); // scale: assume max ~5
-  setText('cp-utilRate', `${util}`);
   const bar = document.getElementById('cp-utilBar');
-  if (bar) bar.style.width = `${utilPct}%`;
+  if (bar) bar.style.width = `${Math.min(stats.avgUtil, 100)}%`;
 
-  // Late banner
-  const lateCount = d.late_workers ?? 0;
-  const banner    = document.getElementById('cpLateBanner');
+  // late banner
+  const banner = document.getElementById('cpLateBanner');
   if (banner) {
-    banner.style.display = lateCount > 0 ? 'flex' : 'none';
-    setText('cp-lateWorkers',   lateCount);
-    setText('cp-reassignments', d.reassignments ?? 0);
+    banner.style.display = stats.late > 0 ? 'flex' : 'none';
+    setText('cp-lateWorkers', stats.late);
+    setText('cp-reassignments', 0);
   }
 
-  // Vehicles
+  // vehicles
   const vRow = document.getElementById('cp-vehicles');
-  if (vRow && d.workers_per_vehicle?.length) {
-    vRow.innerHTML = d.workers_per_vehicle.map(v => {
-      const icon  = VEHICLE_ICONS[v.vehicle?.icon?.trim()] || '🛵';
-      const name  = v.vehicle?.profile || v.vehicle?.icon || 'مركبة';
-      return `
-        <div class="cp-vehicle-chip">
-          <span class="cp-vehicle-chip-icon">${icon}</span>
-          <div>
-            <div class="cp-vehicle-chip-name">${name}</div>
-          </div>
-          <span class="cp-vehicle-chip-count">${v.total_workers}</span>
-        </div>`;
-    }).join('');
-  } else if (vRow) {
-    vRow.innerHTML = '<span class="cp-loading-text">لا توجد بيانات</span>';
+  if (vRow) {
+    const entries = Object.entries(stats.vehicles);
+    if (entries.length) {
+      vRow.innerHTML = entries.map(([icon, count]) => {
+        const emoji = VEHICLE_ICONS[icon] || '🛵';
+        return `
+          <div class="cp-vehicle-chip">
+            <span class="cp-vehicle-chip-icon">${emoji}</span>
+            <div><div class="cp-vehicle-chip-name">${icon}</div></div>
+            <span class="cp-vehicle-chip-count">${count}</span>
+          </div>`;
+      }).join('');
+    } else {
+      vRow.innerHTML = '<span class="cp-loading-text">لا توجد بيانات</span>';
+    }
   }
 
-  // Company stats table
+  // with-orders stat card
+  setText('cp-withOrders', stats.withOrders);
+
+  // company stats table
   const tbody = document.getElementById('cp-statsBody');
-  if (tbody && d.company_stats?.length) {
-    tbody.innerHTML = d.company_stats.map(s => `
+  if (tbody) {
+    tbody.innerHTML = `
       <tr>
-        <td>${s.company_id}</td>
-        <td style="color:var(--green)">${s.active_workers}</td>
-        <td style="color:var(--amber)">${s.total_orders}</td>
-        <td>${s.utilization_rate}</td>
-      </tr>`).join('');
+        <td>${COMPANY}</td>
+        <td style="color:var(--green)">${stats.working + stats.starting}</td>
+        <td style="color:var(--amber)">${stats.totalCompleted}</td>
+        <td style="color:var(--blue)">${stats.avgUtil}%</td>
+      </tr>`;
   }
+
+  // spinner hide
+  const spinner = document.getElementById('cpLoadingSpinner');
+  if (spinner) spinner.style.display = 'none';
 }
 
 // ── RIDER LIST RENDER ──────────────────────────────────
 
 function buildRiderCard(rider) {
-  const status = effectiveStatus(rider);
-  const late   = status === 'late';
-  const avCls  = avatarClass(rider.name);
-  const delivs = rider.deliveries_info?.completed_deliveries_count || 0;
-  const active = rider.deliveries_info?.has_active_deliveries;
+  const status  = effectiveStatus(rider);
+  const late    = status === 'late';
+  const hasOrder = hasActiveOrder(rider);
+  const avCls   = avatarClass(rider.name);
+  const delivs  = rider.deliveries_info?.completed_deliveries_count || 0;
   const isSelected = rider.employee_id === selectedRiderId;
 
   const card = document.createElement('div');
@@ -288,7 +327,7 @@ function buildRiderCard(rider) {
     </div>
     <div class="rider-card-meta">
       <span class="badge ${STATUS_BADGE[status] || 'badge-offline'}">${STATUS_LABEL[status] || status}</span>
-      <span class="deliveries-mini">${active ? '🟢' : '⚪'} ${delivs}</span>
+      <span class="deliveries-mini">${hasOrder ? '🟢 طلب' : '⚪'} ${delivs}</span>
     </div>`;
 
   card.addEventListener('click', () => selectRider(rider.employee_id));
@@ -312,13 +351,14 @@ function renderRiderList() {
 }
 
 function updateHeaderStats(riders) {
-  const c = { working: 0, starting: 0, break: 0, late: 0 };
-  riders.forEach(r => { const s = effectiveStatus(r); if (c[s] !== undefined) c[s]++; });
-  setText('stat-working',  c.working);
-  setText('stat-starting', c.starting);
-  setText('stat-break',    c.break);
-  setText('stat-late',     c.late);
-  setText('stat-total',    riders.length);
+  const stats = computeStatsFromRiders(riders);
+  setText('stat-working',    stats.working);
+  setText('stat-starting',   stats.starting);
+  setText('stat-break',      stats.break);
+  setText('stat-late',       stats.late);
+  setText('stat-orders',     stats.withOrders);
+  setText('stat-total',      stats.total);
+  return stats;
 }
 
 function applyFiltersAndSort() {
@@ -333,7 +373,9 @@ function applyFiltersAndSort() {
     );
   }
 
-  if (currentFilter !== 'all') {
+  if (currentFilter === 'orders') {
+    list = list.filter(r => hasActiveOrder(r));
+  } else if (currentFilter !== 'all') {
     list = list.filter(r => effectiveStatus(r) === currentFilter);
   }
 
@@ -348,7 +390,6 @@ function applyFiltersAndSort() {
     }
   });
 
-  // Late riders always on top when viewing all
   if (currentFilter === 'all') {
     list.sort((a, b) => (effectiveStatus(b) === 'late' ? 1 : 0) - (effectiveStatus(a) === 'late' ? 1 : 0));
   }
@@ -364,7 +405,7 @@ async function loadRiders(silent = false) {
   isLoading = true;
 
   const btn = document.getElementById('btnRefresh');
-  btn.classList.add('spinning');
+  if (btn) btn.classList.add('spinning');
 
   if (!silent) {
     document.getElementById('riderList').innerHTML = `
@@ -373,8 +414,9 @@ async function loadRiders(silent = false) {
 
   try {
     allRiders = await fetchRiders();
-    updateHeaderStats(allRiders);
+    const stats = updateHeaderStats(allRiders);
     applyFiltersAndSort();
+    renderCompanyStats(stats);
     setText('lastUpdate', new Date().toLocaleTimeString('ar-SA'));
     if (!silent) toast(`تم تحميل ${allRiders.length} سائق`, 'success');
   } catch (err) {
@@ -387,7 +429,7 @@ async function loadRiders(silent = false) {
     }
   } finally {
     isLoading = false;
-    btn.classList.remove('spinning');
+    if (btn) btn.classList.remove('spinning');
   }
 }
 
@@ -600,13 +642,269 @@ function switchTab(name) {
   );
 }
 
+// ── GROUP BY STARTING POINT TAB ────────────────────────
+
+function renderGroupByPoint() {
+  const container = document.getElementById('groupByPointContent');
+  if (!container) return;
+
+  const stats = computeStatsFromRiders(allRiders);
+  const entries = Object.entries(stats.byPoint).sort((a, b) => b[1].total - a[1].total);
+
+  if (!entries.length) {
+    container.innerHTML = '<div class="no-data">لا توجد بيانات</div>';
+    return;
+  }
+
+  container.innerHTML = entries.map(([ptName, data]) => `
+    <div class="point-group-card">
+      <div class="point-group-header">
+        <span class="point-group-icon">📍</span>
+        <span class="point-group-name">${ptName}</span>
+        <span class="point-group-total">${data.total} سائق</span>
+      </div>
+      <div class="point-group-stats">
+        <div class="pg-stat pg-working"><span>${data.working}</span><small>يعمل</small></div>
+        <div class="pg-stat pg-starting"><span>${data.starting}</span><small>بداية</small></div>
+        <div class="pg-stat pg-break"><span>${data.break}</span><small>استراحة</small></div>
+        <div class="pg-stat pg-late"><span>${data.late}</span><small>متأخر</small></div>
+        <div class="pg-stat pg-orders"><span>${data.withOrders}</span><small>لديه طلب</small></div>
+      </div>
+      <div class="point-group-riders">
+        ${allRiders
+          .filter(r => (r.starting_point?.name || 'غير محدد') === ptName)
+          .map(r => {
+            const st = effectiveStatus(r);
+            const hasOrd = hasActiveOrder(r);
+            return `<span class="pg-rider-chip ${st === 'late' ? 'chip-late' : ''}" title="${cleanName(r.name)}">
+              ${hasOrd ? '🟢' : '⚪'} ${cleanName(r.name).split(' ')[0]}
+            </span>`;
+          }).join('')}
+      </div>
+    </div>
+  `).join('');
+}
+
+// ── WALLET REPORT PAGE ─────────────────────────────────
+
+function showWalletPage() {
+  currentPage = 'wallet';
+  document.getElementById('dashboardPage').style.display = 'none';
+  document.getElementById('walletPage').style.display    = 'flex';
+  document.getElementById('mapPage').style.display       = 'none';
+  renderWalletReport();
+  updateNavButtons();
+}
+
+function showDashboardPage() {
+  currentPage = 'dashboard';
+  document.getElementById('dashboardPage').style.display = 'flex';
+  document.getElementById('walletPage').style.display    = 'none';
+  document.getElementById('mapPage').style.display       = 'none';
+  updateNavButtons();
+}
+
+function showMapPage() {
+  currentPage = 'map';
+  document.getElementById('dashboardPage').style.display = 'none';
+  document.getElementById('walletPage').style.display    = 'none';
+  document.getElementById('mapPage').style.display       = 'flex';
+  updateNavButtons();
+  setTimeout(() => initMap(), 100);
+}
+
+function updateNavButtons() {
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.page === currentPage);
+  });
+}
+
+function renderWalletReport() {
+  const tbody = document.getElementById('walletTableBody');
+  if (!tbody) return;
+
+  const riders = [...allRiders].sort((a, b) => {
+    const ba = a.wallet_info?.balance || 0;
+    const bb = b.wallet_info?.balance || 0;
+    return bb - ba;
+  });
+
+  if (!riders.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="no-data">لا توجد بيانات</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = riders.map((r, i) => {
+    const wal = r.wallet_info || {};
+    const ws  = walletStatus(wal.limit_status);
+    const bal = wal.balance !== undefined ? wal.balance.toFixed(2) : '—';
+    const statusClass = wal.limit_status === 'balance_over_hard_limit' ? 'wallet-row-danger'
+                      : wal.limit_status === 'balance_over_soft_limit' ? 'wallet-row-warn'
+                      : '';
+    return `
+      <tr class="${statusClass}">
+        <td>${i + 1}</td>
+        <td style="font-family:var(--font-main);font-weight:600">${cleanName(r.name)}</td>
+        <td style="font-family:var(--font-mono);color:var(--text-muted)">${r.phone_number || '—'}</td>
+        <td style="font-family:var(--font-main);color:var(--text-secondary)">${r.starting_point?.name || '—'}</td>
+        <td style="font-family:var(--font-mono);font-weight:700;color:${
+          wal.limit_status === 'balance_over_hard_limit' ? 'var(--red)'
+          : wal.limit_status === 'balance_over_soft_limit' ? 'var(--orange)'
+          : 'var(--green)'
+        }">${bal} ر.س</td>
+        <td><span class="wallet-status ${ws.cls}">${ws.text}</span></td>
+        <td style="font-family:var(--font-mono)">${r.employee_id}</td>
+      </tr>`;
+  }).join('');
+
+  // Summary
+  const overHard = riders.filter(r => r.wallet_info?.limit_status === 'balance_over_hard_limit').length;
+  const overSoft = riders.filter(r => r.wallet_info?.limit_status === 'balance_over_soft_limit').length;
+  const ok       = riders.filter(r => r.wallet_info?.limit_status === 'ok').length;
+  setText('wallet-summary-hard', overHard);
+  setText('wallet-summary-soft', overSoft);
+  setText('wallet-summary-ok',   ok);
+  setText('wallet-total-riders', riders.length);
+}
+
+// ── EXCEL DOWNLOAD ─────────────────────────────────────
+
+function downloadWalletExcel() {
+  if (!allRiders.length) { toast('لا توجد بيانات للتصدير', 'error'); return; }
+
+  // Build CSV (Excel-compatible)
+  const BOM = '\uFEFF';
+  const headers = ['#', 'الاسم', 'الهاتف', 'نقطة الانطلاق', 'الرصيد (ر.س)', 'حالة المحفظة', 'معرف الموظف', 'الحالة'];
+  const rows = allRiders.map((r, i) => {
+    const wal = r.wallet_info || {};
+    const ws  = walletStatus(wal.limit_status);
+    return [
+      i + 1,
+      cleanName(r.name),
+      r.phone_number || '',
+      r.starting_point?.name || '',
+      wal.balance !== undefined ? wal.balance.toFixed(2) : '',
+      ws.text,
+      r.employee_id,
+      STATUS_LABEL[effectiveStatus(r)] || '',
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+  });
+
+  const csv = BOM + [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `wallet-report-${new Date().toISOString().slice(0, 10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast('تم تصدير تقرير المحفظة بنجاح', 'success');
+}
+
+// ── MAP PAGE ───────────────────────────────────────────
+
+function initMap() {
+  const mapEl = document.getElementById('liveMap');
+  if (!mapEl) return;
+
+  // Load Leaflet if not loaded
+  if (typeof L === 'undefined') {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+    document.head.appendChild(link);
+
+    const script = document.createElement('script');
+    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+    script.onload = () => buildMap(mapEl);
+    document.head.appendChild(script);
+  } else {
+    buildMap(mapEl);
+  }
+}
+
+function buildMap(mapEl) {
+  if (leafletMap) {
+    leafletMap.remove();
+    leafletMap = null;
+  }
+
+  leafletMap = L.map(mapEl, { zoomControl: true }).setView([21.3891, 39.8579], 11);
+
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '© OpenStreetMap © CARTO',
+    subdomains: 'abcd',
+    maxZoom: 19,
+  }).addTo(leafletMap);
+
+  mapMarkers.forEach(m => m.remove());
+  mapMarkers = [];
+
+  const activeRiders = allRiders.filter(r =>
+    r.current_location?.latitude && r.current_location?.longitude &&
+    ['working', 'starting', 'late'].includes(effectiveStatus(r))
+  );
+
+  setText('map-rider-count', activeRiders.length);
+  const withOrders    = activeRiders.filter(r => hasActiveOrder(r)).length;
+  const withoutOrders = activeRiders.length - withOrders;
+  setText('map-with-orders',    withOrders);
+  setText('map-without-orders', withoutOrders);
+
+  activeRiders.forEach(rider => {
+    const loc     = rider.current_location;
+    const hasOrd  = hasActiveOrder(rider);
+    const isLateR = effectiveStatus(rider) === 'late';
+    const color   = isLateR ? '#ef4444' : (hasOrd ? '#22c55e' : '#f59e0b');
+    const icon    = L.divIcon({
+      html: `<div style="
+        width:32px;height:32px;border-radius:50%;
+        background:${color};
+        border:3px solid rgba(255,255,255,0.8);
+        display:flex;align-items:center;justify-content:center;
+        font-size:14px;font-weight:900;color:#000;
+        box-shadow:0 2px 8px rgba(0,0,0,0.4);
+        cursor:pointer;
+      ">${hasOrd ? '📦' : '🛵'}</div>`,
+      className: '',
+      iconSize: [32, 32],
+      iconAnchor: [16, 16],
+    });
+
+    const marker = L.marker([loc.latitude, loc.longitude], { icon })
+      .addTo(leafletMap)
+      .bindPopup(`
+        <div dir="rtl" style="font-family:Cairo,sans-serif;min-width:200px">
+          <strong style="font-size:14px">${cleanName(rider.name)}</strong><br>
+          <span style="color:#94a3b8;font-size:12px">${rider.starting_point?.name || '—'}</span><br>
+          <span style="color:${color};font-weight:700">${hasOrd ? '🟢 لديه طلب نشط' : '⚪ لا يوجد طلب'}</span><br>
+          <span style="font-size:11px;color:#64748b">
+            ${rider.deliveries_info?.completed_deliveries_count || 0} توصيلة مكتملة
+          </span>
+        </div>
+      `);
+    mapMarkers.push(marker);
+  });
+
+  // Fit bounds
+  if (mapMarkers.length > 0) {
+    const group = L.featureGroup(mapMarkers);
+    leafletMap.fitBounds(group.getBounds().pad(0.1));
+  }
+}
+
 // ── AUTO REFRESH ───────────────────────────────────────
 
 function startAutoRefresh() {
   stopAutoRefresh();
   refreshTimer = setInterval(() => {
     loadRiders(true);
-    loadCompanyStats(true);
+    if (currentPage === 'map' && leafletMap) {
+      buildMap(document.getElementById('liveMap'));
+    }
+    if (currentPage === 'wallet') {
+      renderWalletReport();
+    }
     if (selectedRiderId) {
       fetchRiderDetails(selectedRiderId).then(rider => {
         renderRiderHeader(rider);
@@ -626,14 +924,13 @@ function stopAutoRefresh() {
 
 document.addEventListener('DOMContentLoaded', () => {
 
-  // Load everything on start
   loadRiders();
-  loadCompanyStats();
 
   // Refresh button
   document.getElementById('btnRefresh').addEventListener('click', () => {
     loadRiders();
-    loadCompanyStats();
+    if (currentPage === 'map') buildMap(document.getElementById('liveMap'));
+    if (currentPage === 'wallet') renderWalletReport();
     if (selectedRiderId) selectRider(selectedRiderId);
   });
 
@@ -683,10 +980,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Detail tabs
   document.querySelectorAll('.detail-tab').forEach(tab => {
-    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
+    tab.addEventListener('click', () => {
+      switchTab(tab.dataset.tab);
+      if (tab.dataset.tab === 'groupbypoint') renderGroupByPoint();
+    });
   });
 
-  // Close detail → show company stats again
+  // Close detail
   document.getElementById('closeDetail').addEventListener('click', () => {
     selectedRiderId = null;
     document.getElementById('riderDetail').style.display = 'none';
@@ -694,9 +994,17 @@ document.addEventListener('DOMContentLoaded', () => {
     document.querySelectorAll('.rider-card').forEach(c => c.classList.remove('selected'));
   });
 
+  // Nav buttons
+  document.getElementById('navDashboard').addEventListener('click', showDashboardPage);
+  document.getElementById('navWallet').addEventListener('click', showWalletPage);
+  document.getElementById('navMap').addEventListener('click', showMapPage);
+
+  // Wallet export
+  document.getElementById('btnExportWallet')?.addEventListener('click', downloadWalletExcel);
+
   // Keyboard shortcuts
   document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key === 'r') { e.preventDefault(); loadRiders(); loadCompanyStats(); }
+    if ((e.ctrlKey || e.metaKey) && e.key === 'r') { e.preventDefault(); loadRiders(); }
     if (e.key === 'Escape') document.getElementById('closeDetail').click();
     if (e.key === '/' && document.activeElement.tagName !== 'INPUT') {
       e.preventDefault();
