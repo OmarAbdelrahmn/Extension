@@ -170,7 +170,7 @@ async function fetchCompanyStats() {
 
 async function fetchRiders() {
   const data = await apiFetch(
-    `${API}/rider-live-operations/v1/external/city/${CITY_ID}/riders?page=0&size=200`
+    `${API}/rider-live-operations/v1/external/city/${CITY_ID}/riders?page=0&size=100`
   );
   return data.content || [];
 }
