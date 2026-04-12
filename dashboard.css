@@ -1210,7 +1210,7 @@ html, body {
 .info-card  { animation: fadeInUp 0.25s ease both; }
 
 .toast-container { position: fixed; bottom: 20px; left: 20px; display: flex; flex-direction: column; gap: 8px; z-index: 999; }
-.toast { padding: 11px 18px; border-radius: var(--radius); font-size: 12px; font-weight: 600; animation: toast-in 0.3s ease; max-width: 280px; }
+.toast { padding: 14px 22px; border-radius: var(--radius); font-size: 14px; font-weight: 700; animation: toast-in 0.3s ease; max-width: 320px; line-height: 1.5; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
 @keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 .toast-error   { background: var(--red-dim);   color: var(--red);   border: 1px solid #991b1b; }
 .toast-success { background: var(--green-dim); color: var(--green); border: 1px solid #166534; }

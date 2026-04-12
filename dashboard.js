@@ -22,6 +22,7 @@ let filteredRiders  = [];
 let currentFilter   = 'all';
 let selectedRiderId = null;
 let refreshTimer    = null;
+let previousStatuses= {};
 let searchQuery     = '';
 let sortBy          = 'name';
 let isLoading       = false;
@@ -402,6 +403,26 @@ function toast(msg, type = 'info', ms = 3000) {
   }, ms);
 }
 
+function playNotificationSound() {
+  try {
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (!globalThis.notifAudioCtx) globalThis.notifAudioCtx = new AudioContext();
+    const ctx = globalThis.notifAudioCtx;
+    if (ctx.state === 'suspended') ctx.resume();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(800, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(1600, ctx.currentTime + 0.1);
+    gain.gain.setValueAtTime(1.0, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.4);
+  } catch(e) { console.warn('Audio play failed', e); }
+}
+
 function setText(id, val) {
   const el = document.getElementById(id);
   if (el) el.textContent = val ?? '—';
@@ -595,7 +616,7 @@ function buildRiderCard(rider) {
     ${late ? '<div class="late-indicator"></div>' : ''}
     <div class="rider-avatar ${avCls}">${avatarInitial(rider.name)}</div>
     <div class="rider-card-info">
-      <div class="rider-card-name">${cleanName(rider.name)}</div>
+      <div class="rider-card-name">${cleanName(rider.name)} <span style="font-size:11px;color:var(--text-muted);font-weight:normal">#${rider.employee_id}</span></div>
       <div class="rider-card-sub">${rider.starting_point?.name || '—'} · ${rider.phone_number || '—'}</div>
     </div>
     <div class="rider-card-meta">
@@ -702,6 +723,30 @@ async function loadRiders(silent = false) {
 
   try {
     allRiders = await fetchRiders();
+
+    if (Object.keys(previousStatuses).length > 0) {
+      let statusChanged = false;
+      allRiders.forEach(r => {
+        const id = r.employee_id;
+        const newStatus = effectiveStatus(r);
+        const oldStatus = previousStatuses[id];
+        if (oldStatus && oldStatus !== newStatus) {
+          statusChanged = true;
+          const name = cleanName(r.name);
+          const oldLbl = t('status_'+oldStatus) || oldStatus;
+          const newLbl = t('status_'+newStatus) || newStatus;
+          const msg = currentLang === 'ar' 
+            ? `تغيرت حالة السائق ${name} (#${id}) من «${oldLbl}» إلى «${newLbl}»`
+            : `${name} (#${id}): ${oldLbl} ➔ ${newLbl}`;
+          toast(msg, 'info', 5000);
+        }
+        previousStatuses[id] = newStatus;
+      });
+      if (statusChanged) playNotificationSound();
+    } else {
+      allRiders.forEach(r => previousStatuses[r.employee_id] = effectiveStatus(r));
+    }
+
     const stats = updateHeaderStats(allRiders);
     applyFiltersAndSort();
     renderCompanyStats(stats);
@@ -776,7 +821,7 @@ function renderRiderHeader(rider) {
   av.textContent = avatarInitial(rider.name);
   av.className   = `detail-avatar ${avCls}`;
 
-  setText('detailName', cleanName(rider.name));
+  setText('detailName', `${cleanName(rider.name)} (#${rider.employee_id})`);
 
   const badge = document.getElementById('detailStatusBadge');
   badge.textContent = t(`status_${status}`) || status;
@@ -1125,8 +1170,13 @@ function downloadWalletExcel() {
    when the user toggles the theme.
    ─────────────────────────────────────────────────── */
 function mapTileUrl() {
-  const variant = currentTheme === 'light' ? 'light_all' : 'dark_all';
-  return `https://{s}.basemaps.cartocdn.com/${variant}/{z}/{x}/{y}{r}.png`;
+  if (currentTheme === 'light') {
+    // CartoDB Voyager for light theme (better contrast, clearer lines and words)
+    return 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
+  } else {
+    // CartoDB Dark Matter for dark theme
+    return 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png';
+  }
 }
 
 function loadLeafletThenInit(mapEl) {
