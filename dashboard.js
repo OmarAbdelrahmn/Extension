@@ -12,9 +12,107 @@
    ═══════════════════════════════════════════════════════ */
 
 const API      = 'https://sa.me.logisticsbackoffice.com/api';
-const CITY_ID  = 5;
-const COMPANY  = 463;
 const REFRESH_MS = 30_000;
+
+// ── CITIES LIST ────────────────────────────────────────
+// Each entry: { id, name (EN), nameAr (AR), city_id (used in API) }
+const CITIES = [
+  {id:6,  name:"Jeddah",                nameAr:"جدة",                   city_id:5},
+  {id:14, name:"Al Ahsa",               nameAr:"الأحساء",               city_id:7},
+  {id:12, name:"Jubail",                nameAr:"الجبيل",                city_id:8},
+  {id:4,  name:"Alkharj",               nameAr:"الخرج",                 city_id:3},
+  {id:5,  name:"Medina",                nameAr:"المدينة المنورة",        city_id:4},
+  {id:17, name:"Hail",                  nameAr:"حائل",                  city_id:201},
+  {id:18, name:"Tabuk",                 nameAr:"تبوك",                  city_id:202},
+  {id:19, name:"Taif",                  nameAr:"الطائف",                city_id:203},
+  {id:24, name:"Yanbu",                 nameAr:"ينبع",                  city_id:208},
+  {id:25, name:"Jazan",                 nameAr:"جازان",                 city_id:209},
+  {id:26, name:"Sakaka",                nameAr:"سكاكا",                 city_id:210},
+  {id:27, name:"Arar",                  nameAr:"عرعر",                  city_id:211},
+  {id:28, name:"Najran",                nameAr:"نجران",                 city_id:212},
+  {id:30, name:"Al Quarayat",           nameAr:"القريات",               city_id:214},
+  {id:43, name:"Rafha",                 nameAr:"رفحاء",                 city_id:222},
+  {id:44, name:"Buqayq",                nameAr:"بقيق",                  city_id:223},
+  {id:47, name:"Shaqra",                nameAr:"شقراء",                 city_id:226},
+  {id:49, name:"Afif",                  nameAr:"عفيف",                  city_id:228},
+  {id:50, name:"Dawadmi",               nameAr:"الدوادمي",              city_id:229},
+  {id:51, name:"Nariyah",               nameAr:"النعيرية",              city_id:230},
+  {id:52, name:"Rabigh",                nameAr:"رابغ",                  city_id:231},
+  {id:126,name:"Ar Rass",               nameAr:"الرس",                  city_id:6},
+  {id:58, name:"Turaif",                nameAr:"طريف",                  city_id:237},
+  {id:53, name:"Bishah",                nameAr:"بيشة",                  city_id:232},
+  {id:59, name:"Sabya",                 nameAr:"صبيا",                  city_id:238},
+  {id:60, name:"Al Ula",                nameAr:"العُلا",                city_id:239},
+  {id:61, name:"Baha",                  nameAr:"الباحة",                city_id:240},
+  {id:62, name:"Al Qaisumah",           nameAr:"القيصومة",              city_id:241},
+  {id:40, name:"Riyadh South",          nameAr:"الرياض الجنوبية",       city_id:1},
+  {id:37, name:"Eastern Province 2",    nameAr:"المنطقة الشرقية 2",     city_id:219},
+  {id:38, name:"Eastern Province 3",    nameAr:"المنطقة الشرقية 3",     city_id:219},
+  {id:55, name:"Howtat Bani Tamim",     nameAr:"حوطة بني تميم",         city_id:234},
+  {id:67, name:"Al Muzahmiya",          nameAr:"المزاحمية",             city_id:243},
+  {id:70, name:"Damd",                  nameAr:"ضمد",                   city_id:246},
+  {id:71, name:"Sharorah",              nameAr:"شرورة",                 city_id:247},
+  {id:72, name:"Uhed Masarha",          nameAr:"أحد المسارحة",          city_id:248},
+  {id:73, name:"Ad Darb",               nameAr:"الدرب",                 city_id:249},
+  {id:74, name:"Al Namas",              nameAr:"النماص",                city_id:250},
+  {id:75, name:"Baljurashi",            nameAr:"بلجرشي",                city_id:251},
+  {id:21, name:"Abha Province",         nameAr:"أبها",                  city_id:205},
+  {id:76, name:"Ahad Rafidah",          nameAr:"أحد رفيدة",             city_id:205},
+  {id:77, name:"Al Wajh",               nameAr:"الوجه",                 city_id:252},
+  {id:78, name:"Duba",                  nameAr:"ضبا",                   city_id:253},
+  {id:79, name:"Sarat Abida",           nameAr:"سراة عبيدة",            city_id:254},
+  {id:80, name:"Tabarjul",              nameAr:"طبرجل",                 city_id:255},
+  {id:81, name:"Tanomah",               nameAr:"تنومة",                 city_id:256},
+  {id:82, name:"Al Uwayqilah",          nameAr:"العويقيلة",             city_id:257},
+  {id:84, name:"Umluj",                 nameAr:"أملج",                  city_id:259},
+  {id:85, name:"Al Quwaiiyah",          nameAr:"القويعية",              city_id:260},
+  {id:90, name:"Kaec",                  nameAr:"كيك",                   city_id:262},
+  {id:23, name:"Hafar Al Batin",        nameAr:"حفر الباطن",            city_id:207},
+  {id:29, name:"Mahayel Asir",          nameAr:"محايل عسير",            city_id:213},
+  {id:48, name:"Abu Arish",             nameAr:"أبو عريش",              city_id:227},
+  {id:99, name:"Mecca Haram Walkers",   nameAr:"مكة الحرم",             city_id:266},
+  {id:100,name:"Neom",                  nameAr:"نيوم",                  city_id:267},
+  {id:41, name:"Al Majmaah",            nameAr:"المجمعة",               city_id:220},
+  {id:32, name:"Al Qunfudhah",          nameAr:"القنفذة",               city_id:216},
+  {id:106,name:"Aramco Compound RT",    nameAr:"مجمع أرامكو رت",        city_id:268},
+  {id:108,name:"Bish",                  nameAr:"بيش",                   city_id:270},
+  {id:56, name:"Dumah Aj Jandal",       nameAr:"دومة الجندل",           city_id:235},
+  {id:45, name:"Wadi Al Dawasir",       nameAr:"وادي الدواسر",          city_id:224},
+  {id:110,name:"Al Lith",               nameAr:"الليث",                 city_id:272},
+  {id:112,name:"Aramco Compound DH",    nameAr:"مجمع أرامكو ظهران",     city_id:273},
+  {id:115,name:"Aramco Compound Buqayq",nameAr:"مجمع أرامكو بقيق",     city_id:274},
+  {id:116,name:"Khulais",               nameAr:"خليص",                  city_id:275},
+  {id:117,name:"Al Wadeen",             nameAr:"الوادين",               city_id:278},
+  {id:118,name:"Mecca South",           nameAr:"مكة الجنوبية",          city_id:200},
+  {id:136,name:"Al Jumum",              nameAr:"الجموم",                city_id:281},
+  {id:16, name:"Mecca North",           nameAr:"مكة الشمالية",          city_id:200},
+  {id:46, name:"Al Khafji",             nameAr:"الخفجي",                city_id:225},
+  {id:57, name:"Al Mithnab",            nameAr:"المذنب",                city_id:236},
+  {id:54, name:"Ad Dilm",               nameAr:"الدلم",                 city_id:233},
+  {id:125,name:"Automation Test",       nameAr:"منتج اختبار",           city_id:280},
+  {id:127,name:"Al Badayea",            nameAr:"البدائع",               city_id:6},
+  {id:128,name:"Al Bukayriyah",         nameAr:"البكيرية",              city_id:6},
+  {id:129,name:"Unayzah",               nameAr:"عنيزة",                 city_id:6},
+  {id:130,name:"Buraydah",              nameAr:"بريدة",                 city_id:6},
+];
+
+/** Returns city display name in the current UI language. */
+function cityName(city) {
+  return (currentLang === 'ar' && city.nameAr) ? city.nameAr : city.name;
+}
+
+/** Re-labels all options in the city dropdown to match the current language. */
+function refreshCityDropdownLabels() {
+  const sel = document.getElementById('citySelect');
+  if (!sel) return;
+  CITIES.forEach((city, i) => {
+    if (sel.options[i]) sel.options[i].textContent = cityName(city);
+  });
+}
+
+// ── DYNAMIC CITY / COMPANY STATE ──────────────────────
+let currentCityEntry = CITIES[0]; // default: Jeddah (city_id 5)
+let currentCompanyId = null;      // read from API after each city load
 
 // ── STATE ──────────────────────────────────────────────
 let allRiders       = [];
@@ -38,7 +136,7 @@ const STRINGS = {
   ar: {
     status_working:'يعمل', status_starting:'بداية', status_break:'استراحة',
     status_late:'متأخر', status_offline:'غير متصل',
-    brand_title:'عمليات السائقين', brand_sub:'جدة — المدينة 5',
+    brand_title:'عمليات السائقين', brand_sub:'عمليات السائقين',
     nav_dashboard:'🏠 الرئيسية', nav_wallet:'💰 المحافظ', nav_map:'🗺 الخريطة',
     stat_working:'يعمل', stat_starting:'بداية', stat_break:'استراحة',
     stat_late:'متأخر', stat_orders:'📦 طلب', stat_all:'الكل',
@@ -49,7 +147,7 @@ const STRINGS = {
     sort_label:'ترتيب:', sort_name:'الاسم', sort_status:'الحالة',
     sort_deliveries:'التوصيلات', sort_util:'معدل الاستخدام', sort_late:'وقت التأخير',
     search_placeholder:'بحث بالاسم أو الهاتف...',
-    cp_title:'أداء الشركة الإجمالي', cp_sub:'شركة 463 · جدة · المدينة 5',
+    cp_title:'أداء الشركة الإجمالي', cp_sub:'أداء الشركة الإجمالي',
     cp_workers:'حالة السائقين', cp_checked_in:'يعمل / بداية', cp_late_lbl:'متأخر',
     cp_offline:'غير متصل', cp_break:'في استراحة', cp_with_orders_lbl:'لديه طلب',
     cp_orders_section:'الطلبات', cp_accepted:'طلب مقبول', cp_declined:'طلب مرفوض',
@@ -108,7 +206,7 @@ const STRINGS = {
   en: {
     status_working:'Working', status_starting:'Starting', status_break:'On Break',
     status_late:'Late', status_offline:'Offline',
-    brand_title:'Rider Live Ops', brand_sub:'Jeddah — District 5',
+    brand_title:'Rider Live Ops', brand_sub:'Rider Live Ops',
     nav_dashboard:'🏠 Dashboard', nav_wallet:'💰 Wallets', nav_map:'🗺 Map',
     stat_working:'Working', stat_starting:'Starting', stat_break:'Break',
     stat_late:'Late', stat_orders:'📦 Orders', stat_all:'All',
@@ -119,7 +217,7 @@ const STRINGS = {
     sort_label:'Sort:', sort_name:'Name', sort_status:'Status',
     sort_deliveries:'Deliveries', sort_util:'Utilization', sort_late:'Late Time',
     search_placeholder:'Search by name or phone...',
-    cp_title:'Overall Company Performance', cp_sub:'Company 463 · Jeddah · District 5',
+    cp_title:'Overall Company Performance', cp_sub:'Overall Company Performance',
     cp_workers:'Rider Status', cp_checked_in:'Working / Starting', cp_late_lbl:'Late',
     cp_offline:'Offline', cp_break:'On Break', cp_with_orders_lbl:'Has Order',
     cp_orders_section:'Orders', cp_accepted:'Accepted Order', cp_declined:'Declined Order',
@@ -237,6 +335,8 @@ function applyLanguage() {
       if (riderData) renderRiderHeader(riderData);
     }
   }
+  // Re-label city dropdown in the new language
+  refreshCityDropdownLabels();
 }
 
 function toggleLang() {
@@ -436,9 +536,25 @@ async function apiFetch(url) {
   return res.json();
 }
 
+async function fetchCityCompanyStats() {
+  // Returns the full company stats object for the current city
+  return apiFetch(`${API}/rider-live-operations/v1/external/city/${currentCityEntry.city_id}/companies`);
+}
+
 async function fetchRiders() {
+  // First pull the company stats to get company_id dynamically
+  try {
+    const cityStats = await fetchCityCompanyStats();
+    const companies = cityStats.company_stats || [];
+    if (companies.length > 0) {
+      currentCompanyId = companies[0].company_id;
+    }
+  } catch (_) {
+    // Non-fatal: company ID stays as previously fetched (or null)
+  }
+
   const data = await apiFetch(
-    `${API}/rider-live-operations/v1/external/city/${CITY_ID}/riders?page=0&size=100`
+    `${API}/rider-live-operations/v1/external/city/${currentCityEntry.city_id}/riders?page=0&size=100`
   );
   return data.content || [];
 }
@@ -451,7 +567,7 @@ async function fetchRiderShifts(id) {
   const ms    = Date.now();
   const start = new Date(ms - 7 * 86_400_000).toISOString();
   const end   = new Date(ms + 14 * 86_400_000).toISOString();
-  const qs = new URLSearchParams({ city_id: CITY_ID, start_at: start, end_at: end });
+  const qs = new URLSearchParams({ city_id: currentCityEntry.city_id, start_at: start, end_at: end });
   return apiFetch(`${API}/rooster/v3/employees/${id}/shifts?${qs}`);
 }
 
@@ -580,11 +696,21 @@ function renderCompanyStats(stats) {
 
   setText('cp-withOrders', stats.withOrders);
 
+  // Update company sub-label with live company ID
+  const cpSubEl = document.querySelector('[data-i18n="cp_sub"]');
+  if (cpSubEl && currentCompanyId) {
+    const cityName = currentCityEntry.name;
+    cpSubEl.textContent = currentLang === 'ar'
+      ? `شركة ${currentCompanyId} · ${cityName} · المدينة ${currentCityEntry.city_id}`
+      : `Company ${currentCompanyId} · ${cityName} · District ${currentCityEntry.city_id}`;
+  }
+
   const tbody = document.getElementById('cp-statsBody');
   if (tbody) {
+    const companyDisplay = currentCompanyId ?? '—';
     tbody.innerHTML = `
       <tr>
-        <td>${COMPANY}</td>
+        <td>${companyDisplay}</td>
         <td style="color:var(--green)">${stats.working + stats.starting}</td>
         <td style="color:var(--amber)">${stats.totalCompleted}</td>
         <td style="color:var(--blue)">${stats.avgUtil}%</td>
@@ -1334,6 +1460,35 @@ function stopAutoRefresh() {
 document.addEventListener('DOMContentLoaded', () => {
 
   applyTheme();
+
+  // ── Populate city dropdown ──────────────────────────
+  const citySelect = document.getElementById('citySelect');
+  if (citySelect) {
+    CITIES.forEach(city => {
+      const opt = document.createElement('option');
+      opt.value = city.id;
+      opt.textContent = cityName(city);
+      // Default to Jeddah (id=6)
+      if (city.id === 6) opt.selected = true;
+      citySelect.appendChild(opt);
+    });
+
+    citySelect.addEventListener('change', () => {
+      const selected = CITIES.find(c => c.id === Number(citySelect.value));
+      if (selected) {
+        currentCityEntry  = selected;
+        currentCompanyId  = null;
+        previousStatuses  = {}; // reset status tracking for new city
+        selectedRiderId   = null;
+        allRiders         = [];
+        filteredRiders    = [];
+        document.getElementById('riderDetail').style.display = 'none';
+        document.getElementById('emptyState').style.display  = 'flex';
+        loadRiders();
+      }
+    });
+  }
+
   applyLanguage();
 
   loadRiders();
