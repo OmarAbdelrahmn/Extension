@@ -615,15 +615,24 @@
           <span data-i18n="history_total_hours">ساعات العمل:</span> <b id="hist-total-hours">—</b>
         </div>
       </div>
-      <div style="display:flex; gap:12px; align-items:center;">
+      <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+        <input type="text" id="historySearchInput" data-i18n-ph="search_placeholder" placeholder="بحث بالاسم أو المعرف..." style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-family:'Cairo',sans-serif;font-size:14px;outline:none;width:200px;" />
         <input type="date" id="historyDateInput" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-family:'Cairo',sans-serif;font-size:14px;outline:none;cursor:pointer;" />
-        <button class="btn-export" id="btnRefreshHistory" style="background:var(--bg-card)">
+        <button class="btn-export" id="btnRefreshHistory" style="background:var(--bg-card); gap:4px">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
             <polyline points="23 4 23 10 17 10"/>
             <polyline points="1 20 1 14 7 14"/>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
           </svg>
           <span data-i18n="history_refresh">تحديث</span>
+        </button>
+        <button class="btn-export" id="btnExportHistory">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          <span data-i18n="wallet_export">تصدير Excel</span>
         </button>
       </div>
     </div>

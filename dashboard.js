@@ -130,6 +130,8 @@ let leafletMap      = null;
 let mapTileLayer    = null;   // reference kept so we can hot-swap tiles on theme change
 let currentLang     = localStorage.getItem('dash_lang')  || 'ar';
 let currentTheme    = localStorage.getItem('dash_theme') || 'dark';
+let historyRawData  = null;
+let historySearchQuery = '';
 
 // ── TRANSLATIONS ───────────────────────────────────────
 const STRINGS = {
@@ -1289,10 +1291,11 @@ async function loadHistoryStats() {
   try {
     const res = await fetch(`https://express-extension-manager.premiumasp.net/api/rider-stats/${cid}/${date}`);
     if (!res.ok) throw new Error('API Error');
-    const data = await res.json();
-    renderHistoryReport(data);
+    historyRawData = await res.json();
+    renderHistoryReport();
   } catch (err) {
     console.warn('loadHistoryStats error:', err);
+    historyRawData = null;
     tbody.innerHTML = `<tr><td colspan="7" class="no-data" style="color:var(--red)">لا توجد بيانات لهذا اليوم أو حدث خطأ في الاتصال</td></tr>`;
     setText('hist-total-riders', '—');
     setText('hist-total-orders', '—');
@@ -1301,14 +1304,24 @@ async function loadHistoryStats() {
   }
 }
 
-function renderHistoryReport(data) {
-  setText('hist-total-riders', data.totalRiders ?? '—');
-  setText('hist-total-orders', data.totalOrders ?? '—');
-  setText('hist-total-wallet', data.totalWallet !== undefined ? data.totalWallet.toFixed(2) : '—');
-  setText('hist-total-hours', data.totalWorkingHours !== undefined ? data.totalWorkingHours.toFixed(2) : '—');
+function renderHistoryReport() {
+  if (!historyRawData) return;
+
+  setText('hist-total-riders', historyRawData.totalRiders ?? '—');
+  setText('hist-total-orders', historyRawData.totalOrders ?? '—');
+  setText('hist-total-wallet', historyRawData.totalWallet !== undefined ? historyRawData.totalWallet.toFixed(2) : '—');
+  setText('hist-total-hours', historyRawData.totalWorkingHours !== undefined ? historyRawData.totalWorkingHours.toFixed(2) : '—');
 
   const tbody = document.getElementById('historyTableBody');
-  const riders = data.riders || [];
+  let riders = historyRawData.riders || [];
+
+  if (historySearchQuery) {
+    const q = historySearchQuery.toLowerCase();
+    riders = riders.filter(r => 
+      (r.riderName || '').toLowerCase().includes(q) || 
+      (String(r.riderId) || '').toLowerCase().includes(q)
+    );
+  }
 
   if (!riders.length) {
     tbody.innerHTML = `<tr><td colspan="7" class="no-data">لا توجد بيانات</td></tr>`;
@@ -1341,6 +1354,63 @@ function renderHistoryReport(data) {
     </tr>
     `;
   }).join('');
+}
+
+function downloadHistoryExcel() {
+  if (!historyRawData || !historyRawData.riders || !historyRawData.riders.length) {
+    toast(t('toast_no_export'), 'error');
+    return;
+  }
+
+  let riders = historyRawData.riders;
+  if (historySearchQuery) {
+    const q = historySearchQuery.toLowerCase();
+    riders = riders.filter(r => 
+      (r.riderName || '').toLowerCase().includes(q) || 
+      (String(r.riderId) || '').toLowerCase().includes(q)
+    );
+  }
+
+  if (!riders.length) {
+    toast(t('toast_no_export'), 'error');
+    return;
+  }
+
+  const BOM = '\uFEFF';
+  const headers = [
+    t('hist_col_num'), t('hist_col_name'), t('hist_col_id'),
+    t('hist_col_orders'), t('hist_col_wallet'), t('hist_col_hours'),
+    t('hist_col_status')
+  ];
+
+  const rows = riders.map((r, i) => {
+    const liveRider = allRiders.find(lr => String(lr.employee_id) === String(r.riderId));
+    let statusLabel = t('hist_not_working');
+    if (liveRider) {
+      const st = effectiveStatus(liveRider);
+      if (st !== 'offline') {
+        const late = isLate(liveRider);
+        statusLabel = late ? t('status_late') : (t(`status_${st}`) || st);
+      }
+    }
+
+    return [
+      i + 1, r.riderName || '', r.riderId || '',
+      r.orders || 0, (r.wallet || 0).toFixed(2),
+      (r.workingHours || 0).toFixed(2), statusLabel
+    ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
+  });
+
+  const csv  = BOM + [headers.join(','), ...rows].join('\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  const date = document.getElementById('historyDateInput').value || new Date().toLocaleDateString('en-CA');
+  a.download = `history-report-${currentCompanyId}-${date}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+  toast(t('toast_exported'), 'success');
 }
 
 // ── WALLET REPORT ──────────────────────────────────────
@@ -1720,6 +1790,16 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   if (document.getElementById('historyDateInput')) {
     document.getElementById('historyDateInput').addEventListener('change', loadHistoryStats);
+  }
+  if (document.getElementById('historySearchInput')) {
+    const hsInput = document.getElementById('historySearchInput');
+    hsInput.addEventListener('input', () => {
+      historySearchQuery = hsInput.value.trim();
+      renderHistoryReport();
+    });
+  }
+  if (document.getElementById('btnExportHistory')) {
+    document.getElementById('btnExportHistory').addEventListener('click', downloadHistoryExcel);
   }
 
   document.getElementById('btnExportWallet')?.addEventListener('click', downloadWalletExcel);
