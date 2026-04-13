@@ -216,6 +216,8 @@ const STRINGS = {
     hist_col_orders: 'الطلبات',
     hist_col_wallet: 'المحفظة',
     hist_col_hours: 'ساعات العمل',
+    hist_col_status: 'الحالة المباشرة',
+    hist_not_working: 'لا يعمل حالياً',
   },
   en: {
     status_working:'Working', status_starting:'Starting', status_break:'On Break',
@@ -300,6 +302,8 @@ const STRINGS = {
     hist_col_orders: 'Orders',
     hist_col_wallet: 'Wallet',
     hist_col_hours: 'Working Hours',
+    hist_col_status: 'Live Status',
+    hist_not_working: 'Not Working',
   }
 };
 
@@ -1224,7 +1228,8 @@ function showHistoryPage() {
   updateNavButtons();
   
   if (!document.getElementById('historyDateInput').value) {
-    document.getElementById('historyDateInput').value = new Date().toISOString().split('T')[0];
+    // 'en-CA' always formats local time as YYYY-MM-DD
+    document.getElementById('historyDateInput').value = new Date().toLocaleDateString('en-CA');
   }
   
   loadHistoryStats();
@@ -1241,8 +1246,8 @@ function updateNavButtons() {
 async function sendRiderStatsJob() {
   if (!allRiders || !allRiders.length || !currentCompanyId) return;
 
-  // Use today's date in YYYY-MM-DD
-  const today = new Date().toISOString().split('T')[0];
+  // Use today's local device date in YYYY-MM-DD
+  const today = new Date().toLocaleDateString('en-CA');
 
   const payload = allRiders.map(r => ({
     riderId: String(r.employee_id || ''),
@@ -1271,15 +1276,15 @@ async function loadHistoryStats() {
   const tbody = document.getElementById('historyTableBody');
   if (!tbody) return;
 
-  const date = document.getElementById('historyDateInput').value || new Date().toISOString().split('T')[0];
+  const date = document.getElementById('historyDateInput').value || new Date().toLocaleDateString('en-CA');
   const cid = currentCompanyId;
 
   if (!cid) {
-    tbody.innerHTML = `<tr><td colspan="6" class="no-data" style="color:var(--text-muted)">لم يتم تحديد الشركة بعد. انتظر تحميل لوحة التحكم أولاً.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="no-data" style="color:var(--text-muted)">لم يتم تحديد الشركة بعد. انتظر تحميل لوحة التحكم أولاً.</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = `<tr><td colspan="6" class="no-data">${t('loading')}</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="7" class="no-data">${t('loading')}</td></tr>`;
 
   try {
     const res = await fetch(`https://express-extension-manager.premiumasp.net/api/rider-stats/${cid}/${date}`);
@@ -1288,7 +1293,7 @@ async function loadHistoryStats() {
     renderHistoryReport(data);
   } catch (err) {
     console.warn('loadHistoryStats error:', err);
-    tbody.innerHTML = `<tr><td colspan="6" class="no-data" style="color:var(--red)">لا توجد بيانات لهذا اليوم أو حدث خطأ في الاتصال</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="no-data" style="color:var(--red)">لا توجد بيانات لهذا اليوم أو حدث خطأ في الاتصال</td></tr>`;
     setText('hist-total-riders', '—');
     setText('hist-total-orders', '—');
     setText('hist-total-wallet', '—');
@@ -1306,20 +1311,36 @@ function renderHistoryReport(data) {
   const riders = data.riders || [];
 
   if (!riders.length) {
-    tbody.innerHTML = `<tr><td colspan="6" class="no-data">لا توجد بيانات</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" class="no-data">لا توجد بيانات</td></tr>`;
     return;
   }
 
-  tbody.innerHTML = riders.map((r, i) => `
+  tbody.innerHTML = riders.map((r, i) => {
+    const liveRider = allRiders.find(lr => String(lr.employee_id) === String(r.riderId));
+    let statusLabel = t('hist_not_working');
+    let badgeCls    = 'badge-offline';
+
+    if (liveRider) {
+      const st = effectiveStatus(liveRider);
+      if (st !== 'offline') {
+        const late = isLate(liveRider);
+        statusLabel = late ? t('status_late') : (t(`status_${st}`) || st);
+        badgeCls    = late ? 'badge-late' : (STATUS_BADGE[st] || 'badge-offline');
+      }
+    }
+
+    return `
     <tr>
       <td>${i + 1}</td>
       <td style="font-family:var(--font-main);font-weight:600">${r.riderName || '—'}</td>
       <td style="font-family:var(--font-mono)">${r.riderId || '—'}</td>
       <td style="color:var(--amber);font-weight:700">${r.orders || 0}</td>
       <td style="color:var(--green);font-weight:700">${(r.wallet || 0).toFixed(2)} ${t('currency')}</td>
-      <td style="color:var(--blue);font-weight:700">${(r.workingHours || 0).toFixed(2)} س</td>
+      <td style="color:var(--blue);font-weight:700">${(r.workingHours || 0).toFixed(2)} ${t('hour_label')}</td>
+      <td><span class="badge ${badgeCls}">${statusLabel}</span></td>
     </tr>
-  `).join('');
+    `;
+  }).join('');
 }
 
 // ── WALLET REPORT ──────────────────────────────────────
