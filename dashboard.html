@@ -77,6 +77,7 @@
       <button class="nav-btn active" id="navDashboard" data-page="dashboard" data-i18n="nav_dashboard">🏠 الرئيسية</button>
       <button class="nav-btn" id="navWallet"    data-page="wallet"    data-i18n="nav_wallet">💰 المحافظ</button>
       <button class="nav-btn" id="navMap"       data-page="map"       data-i18n="nav_map">🗺 الخريطة</button>
+      <button class="nav-btn" id="navHistory"   data-page="history"   data-i18n="nav_history">📜 السجل</button>
     </div>
 
     <div class="header-stats" id="headerStats">
@@ -589,6 +590,61 @@
       </div>
     </div>
     <div id="liveMap" class="live-map"></div>
+  </div>
+
+  <!-- ══════════════════════════════════
+       PAGE: HISTORY
+  ══════════════════════════════════ -->
+  <div id="historyPage" class="wallet-page-layout" style="display:none">
+    <div class="wallet-page-header" style="flex-wrap: wrap; gap: 16px;">
+      <div style="flex: 1; min-width: 250px;">
+        <h2 data-i18n="history_title">📜 سجل إحصائيات السائقين</h2>
+        <span data-i18n="history_sub">عرض الإحصائيات لليوم الحالي</span>
+      </div>
+      <div class="wallet-page-summary" style="flex: 2; min-width: 300px; justify-content: flex-end;">
+        <div class="ws-pill ws-ok">
+          <span data-i18n="history_total_riders">إجمالي السائقين:</span> <b id="hist-total-riders">—</b>
+        </div>
+        <div class="ws-pill ws-warn">
+          <span data-i18n="history_total_orders">إجمالي الطلبات:</span> <b id="hist-total-orders">—</b>
+        </div>
+        <div class="ws-pill ws-danger">
+          <span data-i18n="history_total_wallet">إجمالي المحافظ:</span> <b id="hist-total-wallet">—</b>
+        </div>
+        <div class="ws-pill ws-total" style="background:#1e3a8a;color:#93c5fd;border:1px solid #3b82f640;">
+          <span data-i18n="history_total_hours">ساعات العمل:</span> <b id="hist-total-hours">—</b>
+        </div>
+      </div>
+      <div style="display:flex; gap:12px; align-items:center;">
+        <input type="date" id="historyDateInput" style="padding:8px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg-card);color:var(--text-primary);font-family:'Cairo',sans-serif;font-size:14px;outline:none;cursor:pointer;" />
+        <button class="btn-export" id="btnRefreshHistory" style="background:var(--bg-card)">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <polyline points="23 4 23 10 17 10"/>
+            <polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          <span data-i18n="history_refresh">تحديث</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="wallet-table-wrap">
+      <table class="wallet-table">
+        <thead>
+          <tr>
+            <th data-i18n="hist_col_num">#</th>
+            <th data-i18n="hist_col_name">الاسم</th>
+            <th data-i18n="hist_col_id">معرف الموظف</th>
+            <th data-i18n="hist_col_orders">الطلبات</th>
+            <th data-i18n="hist_col_wallet">المحفظة</th>
+            <th data-i18n="hist_col_hours">ساعات العمل</th>
+          </tr>
+        </thead>
+        <tbody id="historyTableBody">
+          <tr><td colspan="6" class="no-data" data-i18n="loading">جاري التحميل...</td></tr>
+        </tbody>
+      </table>
+    </div>
   </div>
 
   <div class="toast-container" id="toastContainer"></div>

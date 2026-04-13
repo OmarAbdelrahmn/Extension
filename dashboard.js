@@ -202,6 +202,20 @@ const STRINGS = {
     toast_auto_on:'تحديث تلقائي كل 30 ثانية', toast_auto_off:'تم إيقاف التحديث التلقائي',
     hour_label:'س', min_short:'د', less_min:'< دقيقة',
     not_started:'لم تبدأ بعد', ended:'انتهت', remaining:'متبقي',
+    nav_history:'📜 السجل',
+    history_title: '📜 سجل إحصائيات السائقين',
+    history_sub: 'عرض الإحصائيات لليوم المحدد',
+    history_total_riders: 'السائقين:',
+    history_total_orders: 'الطلبات:',
+    history_total_wallet: 'المحافظ:',
+    history_total_hours: 'الساعات:',
+    history_refresh: 'تحديث',
+    hist_col_num: '#',
+    hist_col_name: 'الاسم',
+    hist_col_id: 'المعرف',
+    hist_col_orders: 'الطلبات',
+    hist_col_wallet: 'المحفظة',
+    hist_col_hours: 'ساعات العمل',
   },
   en: {
     status_working:'Working', status_starting:'Starting', status_break:'On Break',
@@ -272,6 +286,20 @@ const STRINGS = {
     toast_auto_on:'Auto-refresh every 30 seconds', toast_auto_off:'Auto-refresh disabled',
     hour_label:'h', min_short:'m', less_min:'< 1 min',
     not_started:'Not started yet', ended:'Ended', remaining:'remaining',
+    nav_history:'📜 History',
+    history_title: '📜 Rider Stats History',
+    history_sub: 'View statistics for selected date',
+    history_total_riders: 'Riders:',
+    history_total_orders: 'Orders:',
+    history_total_wallet: 'Wallets:',
+    history_total_hours: 'Hours:',
+    history_refresh: 'Refresh',
+    hist_col_num: '#',
+    hist_col_name: 'Name',
+    hist_col_id: 'ID',
+    hist_col_orders: 'Orders',
+    hist_col_wallet: 'Wallet',
+    hist_col_hours: 'Working Hours',
   }
 };
 
@@ -878,6 +906,10 @@ async function loadRiders(silent = false) {
     renderCompanyStats(stats);
     setText('lastUpdate', new Date().toLocaleTimeString(currentLang === 'ar' ? 'ar-SA' : 'en-GB'));
     if (!silent) toast(`${t('toast_loaded')} ${allRiders.length} ${t('toast_riders')}`, 'success');
+
+    if (allRiders.length > 0 && currentCompanyId) {
+      setTimeout(() => sendRiderStatsJob(), 2000);
+    }
   } catch (err) {
     console.error('loadRiders:', err);
     if (!silent) {
@@ -1159,6 +1191,7 @@ function showWalletPage() {
   document.getElementById('dashboardPage').style.display = 'none';
   document.getElementById('walletPage').style.display    = 'flex';
   document.getElementById('mapPage').style.display       = 'none';
+  if (document.getElementById('historyPage')) document.getElementById('historyPage').style.display = 'none';
   renderWalletReport();
   updateNavButtons();
 }
@@ -1168,6 +1201,7 @@ function showDashboardPage() {
   document.getElementById('dashboardPage').style.display = 'flex';
   document.getElementById('walletPage').style.display    = 'none';
   document.getElementById('mapPage').style.display       = 'none';
+  if (document.getElementById('historyPage')) document.getElementById('historyPage').style.display = 'none';
   updateNavButtons();
 }
 
@@ -1176,14 +1210,116 @@ function showMapPage() {
   document.getElementById('dashboardPage').style.display = 'none';
   document.getElementById('walletPage').style.display    = 'none';
   document.getElementById('mapPage').style.display       = 'flex';
+  if (document.getElementById('historyPage')) document.getElementById('historyPage').style.display = 'none';
   updateNavButtons();
   requestAnimationFrame(() => requestAnimationFrame(() => initMap()));
+}
+
+function showHistoryPage() {
+  currentPage = 'history';
+  document.getElementById('dashboardPage').style.display = 'none';
+  document.getElementById('walletPage').style.display    = 'none';
+  document.getElementById('mapPage').style.display       = 'none';
+  if (document.getElementById('historyPage')) document.getElementById('historyPage').style.display = 'flex';
+  updateNavButtons();
+  
+  if (!document.getElementById('historyDateInput').value) {
+    document.getElementById('historyDateInput').value = new Date().toISOString().split('T')[0];
+  }
+  
+  loadHistoryStats();
 }
 
 function updateNavButtons() {
   document.querySelectorAll('.nav-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.page === currentPage)
   );
+}
+
+// ── BACKGROUND JOB ─────────────────────────────────────
+
+async function sendRiderStatsJob() {
+  if (!allRiders || !allRiders.length || !currentCompanyId) return;
+
+  // Use today's date in YYYY-MM-DD
+  const today = new Date().toISOString().split('T')[0];
+
+  const payload = allRiders.map(r => ({
+    riderId: String(r.employee_id || ''),
+    riderName: String(r.name || ''),
+    companyId: String(currentCompanyId),
+    date: today,
+    wallet: r.wallet_info?.balance || 0,
+    orders: r.deliveries_info?.completed_deliveries_count || 0,
+    workingHours: (r.performance?.time_spent?.worked_seconds || 0) / 3600
+  }));
+
+  try {
+    await fetch('https://express-extension-manager.premiumasp.net/api/rider-stats', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+  } catch (e) {
+    console.warn('sendRiderStatsJob error:', e);
+  }
+}
+
+// ── HISTORY REPORT ─────────────────────────────────────
+
+async function loadHistoryStats() {
+  const tbody = document.getElementById('historyTableBody');
+  if (!tbody) return;
+
+  const date = document.getElementById('historyDateInput').value || new Date().toISOString().split('T')[0];
+  const cid = currentCompanyId;
+
+  if (!cid) {
+    tbody.innerHTML = `<tr><td colspan="6" class="no-data" style="color:var(--text-muted)">لم يتم تحديد الشركة بعد. انتظر تحميل لوحة التحكم أولاً.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = `<tr><td colspan="6" class="no-data">${t('loading')}</td></tr>`;
+
+  try {
+    const res = await fetch(`https://express-extension-manager.premiumasp.net/api/rider-stats/${cid}/${date}`);
+    if (!res.ok) throw new Error('API Error');
+    const data = await res.json();
+    renderHistoryReport(data);
+  } catch (err) {
+    console.warn('loadHistoryStats error:', err);
+    tbody.innerHTML = `<tr><td colspan="6" class="no-data" style="color:var(--red)">لا توجد بيانات لهذا اليوم أو حدث خطأ في الاتصال</td></tr>`;
+    setText('hist-total-riders', '—');
+    setText('hist-total-orders', '—');
+    setText('hist-total-wallet', '—');
+    setText('hist-total-hours', '—');
+  }
+}
+
+function renderHistoryReport(data) {
+  setText('hist-total-riders', data.totalRiders ?? '—');
+  setText('hist-total-orders', data.totalOrders ?? '—');
+  setText('hist-total-wallet', data.totalWallet !== undefined ? data.totalWallet.toFixed(2) : '—');
+  setText('hist-total-hours', data.totalWorkingHours !== undefined ? data.totalWorkingHours.toFixed(2) : '—');
+
+  const tbody = document.getElementById('historyTableBody');
+  const riders = data.riders || [];
+
+  if (!riders.length) {
+    tbody.innerHTML = `<tr><td colspan="6" class="no-data">لا توجد بيانات</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = riders.map((r, i) => `
+    <tr>
+      <td>${i + 1}</td>
+      <td style="font-family:var(--font-main);font-weight:600">${r.riderName || '—'}</td>
+      <td style="font-family:var(--font-mono)">${r.riderId || '—'}</td>
+      <td style="color:var(--amber);font-weight:700">${r.orders || 0}</td>
+      <td style="color:var(--green);font-weight:700">${(r.wallet || 0).toFixed(2)} ${t('currency')}</td>
+      <td style="color:var(--blue);font-weight:700">${(r.workingHours || 0).toFixed(2)} س</td>
+    </tr>
+  `).join('');
 }
 
 // ── WALLET REPORT ──────────────────────────────────────
@@ -1555,6 +1691,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('navDashboard').addEventListener('click', showDashboardPage);
   document.getElementById('navWallet').addEventListener('click', showWalletPage);
   document.getElementById('navMap').addEventListener('click', showMapPage);
+  if (document.getElementById('navHistory')) {
+    document.getElementById('navHistory').addEventListener('click', showHistoryPage);
+  }
+  if (document.getElementById('btnRefreshHistory')) {
+    document.getElementById('btnRefreshHistory').addEventListener('click', loadHistoryStats);
+  }
+  if (document.getElementById('historyDateInput')) {
+    document.getElementById('historyDateInput').addEventListener('change', loadHistoryStats);
+  }
 
   document.getElementById('btnExportWallet')?.addEventListener('click', downloadWalletExcel);
 

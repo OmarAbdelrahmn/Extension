@@ -96,6 +96,10 @@
       color: #374151;
       padding: 8px;
     }
+    #userNameInput:focus {
+      border-color: #f59e0b;
+      box-shadow: 0 0 0 2px #f59e0b40;
+    }
   </style>
 </head>
 <body>
@@ -105,6 +109,8 @@
     <p class="sub">جدة — المنطقة 5</p>
   </div>
   <div class="popup-body">
+    <input type="text" id="userNameInput" placeholder="اسم المستخدم (Username)" style="width: 100%; padding: 12px; margin-bottom: 12px; border-radius: 8px; border: 1px solid #2d3748; background: #0d1117; color: #e2e8f0; font-family: 'Cairo', sans-serif; font-size: 14px; outline: none;" />
+    <div id="errorMessage" style="color: #ef4444; font-size: 12px; margin-bottom: 12px; display: none; text-align: center; font-weight: 600;">اسم المستخدم غير صالح</div>
     <button class="open-btn" id="openDashboard">
       <span>🚀</span>
       <span>فتح لوحة التحكم</span>

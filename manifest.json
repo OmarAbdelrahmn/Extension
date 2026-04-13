@@ -5,7 +5,8 @@
   "description": "لوحة تحكم عمليات السائقين المباشرة - جدة",
   "permissions": ["storage", "tabs", "cookies"],
   "host_permissions": [
-    "https://sa.me.logisticsbackoffice.com/*"
+    "https://sa.me.logisticsbackoffice.com/*",
+    "https://express-extension-manager.premiumasp.net/*"
   ],
   "action": {
     "default_popup": "popup.html",
