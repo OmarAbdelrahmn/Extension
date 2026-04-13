@@ -86,6 +86,7 @@
 [data-theme="light"] .badge-break    { background: #ffedd5; color: #c2410c; }
 [data-theme="light"] .badge-late     { background: #fee2e2; color: #b91c1c; }
 [data-theme="light"] .badge-offline  { background: #f1f5f9; color: #64748b; }
+[data-theme="light"] .badge-ending   { background: #f3e8ff; color: #7e22ce; }
 
 [data-theme="light"] .stat-pill.working  { background: #dcfce7; border-color: #86efac; color: #15803d; }
 [data-theme="light"] .stat-pill.starting { background: #dbeafe; border-color: #93c5fd; color: #1d4ed8; }
@@ -634,6 +635,7 @@ html, body {
 .badge-break    { background: var(--orange-dim); color: var(--orange); }
 .badge-late     { background: var(--red-dim);    color: var(--red); }
 .badge-offline  { background: #1f2937;           color: #6b7280; }
+.badge-ending   { background: #3b0764;           color: #d8b4fe; }
 
 .deliveries-mini {
   font-size: 9px;

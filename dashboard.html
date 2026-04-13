@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>عمليات السائقين المباشرة — جدة</title>
+  <title>لوحة تحكم هنقر</title>
+  <link rel="icon" type="image/png" sizes="128x128" href="icons/icon128.png">
   <link rel="stylesheet" href="dashboard.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@300;400;500;600;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
@@ -68,7 +69,7 @@
     <div class="header-brand">
       <span class="brand-icon">🛵</span>
       <div class="brand-text">
-        <h1 data-i18n="brand_title">عمليات السائقين</h1>
+        <h1 data-i18n="brand_title">لوحة تحكم هنقر</h1>
         <span class="brand-sub" data-i18n="brand_sub">جدة — المدينة 5</span>
       </div>
     </div>
@@ -231,11 +232,6 @@
               <div class="cp-num" id="cp-checkedInLate">—</div>
               <div class="cp-lbl" data-i18n="cp_late_lbl">متأخر</div>
             </div>
-            <div class="cp-card cp-orange">
-              <div class="cp-icon-top">❌</div>
-              <div class="cp-num" id="cp-notCheckedIn">—</div>
-              <div class="cp-lbl" data-i18n="cp_offline">غير متصل</div>
-            </div>
             <div class="cp-card cp-blue">
               <div class="cp-icon-top">☕</div>
               <div class="cp-num" id="cp-onBreak">—</div>
@@ -245,6 +241,11 @@
               <div class="cp-icon-top">📦</div>
               <div class="cp-num" id="cp-withOrders">—</div>
               <div class="cp-lbl" data-i18n="cp_with_orders_lbl">لديه طلب</div>
+            </div>
+            <div class="cp-card cp-orange">
+              <div class="cp-icon-top">⚪</div>
+              <div class="cp-num" id="cp-withoutOrders">—</div>
+              <div class="cp-lbl" data-i18n="cp_without_orders_lbl">بدون طلب</div>
             </div>
           </div>
 

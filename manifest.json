@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Rider Live Ops - عمليات السائقين",
+  "name": "Hunger Dashboard - لوحة تحكم هنقر",
   "version": "2.0.1",
-  "description": "لوحة تحكم عمليات السائقين المباشرة - جدة",
+  "description": "أداة شاملة لإدارة أسطول هنقر تتيح التتبع المباشر للسائقين والطلبات، وإدارة المحافظ، مع إمكانيات متقدمة لحفظ البيانات وتصدير التقارير لتسهيل سير العمل.",
   "permissions": ["storage", "tabs", "cookies"],
   "host_permissions": [
     "https://sa.me.logisticsbackoffice.com/*",

@@ -136,9 +136,9 @@ let historySearchQuery = '';
 // ── TRANSLATIONS ───────────────────────────────────────
 const STRINGS = {
   ar: {
-    status_working:'يعمل', status_starting:'بداية', status_break:'استراحة',
+    status_working:'يعمل', status_starting:'بداية', dtstus_starting:'بداية', status_ending:'إنهاء', status_break:'استراحة',
     status_late:'متأخر', status_offline:'غير متصل',
-    brand_title:'عمليات السائقين', brand_sub:'عمليات السائقين',
+    brand_title:'لوحة تحكم هنقر', brand_sub:'لوحة تحكم هنقر',
     nav_dashboard:'🏠 الرئيسية', nav_wallet:'💰 المحافظ', nav_map:'🗺 الخريطة',
     stat_working:'يعمل', stat_starting:'بداية', stat_break:'استراحة',
     stat_late:'متأخر', stat_orders:'📦 طلب', stat_all:'الكل',
@@ -151,7 +151,7 @@ const STRINGS = {
     search_placeholder:'بحث بالاسم أو الهاتف...',
     cp_title:'أداء الشركة الإجمالي', cp_sub:'أداء الشركة الإجمالي',
     cp_workers:'حالة السائقين', cp_checked_in:'يعمل / بداية', cp_late_lbl:'متأخر',
-    cp_offline:'غير متصل', cp_break:'في استراحة', cp_with_orders_lbl:'لديه طلب',
+    cp_offline:'غير متصل', cp_break:'في استراحة', cp_with_orders_lbl:'لديه طلب', cp_without_orders_lbl:'بدون طلب',
     cp_orders_section:'الطلبات', cp_accepted:'طلب مقبول', cp_declined:'طلب مرفوض',
     cp_util_section:'متوسط معدل الاستخدام', cp_vehicles_section:'توزيع المركبات',
     cp_company_section:'ملخص الشركة', cp_footer_hint:'انقر على أي سائق من القائمة لعرض تفاصيله الكاملة',
@@ -222,9 +222,9 @@ const STRINGS = {
     hist_not_working: 'لا يعمل حالياً',
   },
   en: {
-    status_working:'Working', status_starting:'Starting', status_break:'On Break',
+    status_working:'Working', status_starting:'Starting', dtstus_starting:'Starting', status_ending:'Ending', status_break:'On Break',
     status_late:'Late', status_offline:'Offline',
-    brand_title:'Rider Live Ops', brand_sub:'Rider Live Ops',
+    brand_title:'Hunger Dashboard', brand_sub:'Hunger Dashboard',
     nav_dashboard:'🏠 Dashboard', nav_wallet:'💰 Wallets', nav_map:'🗺 Map',
     stat_working:'Working', stat_starting:'Starting', stat_break:'Break',
     stat_late:'Late', stat_orders:'📦 Orders', stat_all:'All',
@@ -237,7 +237,7 @@ const STRINGS = {
     search_placeholder:'Search by name or phone...',
     cp_title:'Overall Company Performance', cp_sub:'Overall Company Performance',
     cp_workers:'Rider Status', cp_checked_in:'Working / Starting', cp_late_lbl:'Late',
-    cp_offline:'Offline', cp_break:'On Break', cp_with_orders_lbl:'Has Order',
+    cp_offline:'Offline', cp_break:'On Break', cp_with_orders_lbl:'Has Order', cp_without_orders_lbl:'No Orders',
     cp_orders_section:'Orders', cp_accepted:'Accepted Order', cp_declined:'Declined Order',
     cp_util_section:'Average Utilization Rate', cp_vehicles_section:'Vehicle Distribution',
     cp_company_section:'Company Summary', cp_footer_hint:'Click any rider in the list to view full details',
@@ -384,6 +384,8 @@ function toggleLang() {
 const STATUS_BADGE = {
   working:  'badge-working',
   starting: 'badge-starting',
+  dtstus_starting: 'badge-starting',
+  ending:   'badge-ending',
   break:    'badge-break',
   late:     'badge-late',
   offline:  'badge-offline',
@@ -632,8 +634,8 @@ function computeStatsFromRiders(riders) {
     // Count each rider in their API status bucket
     // (working / starting / break / offline / late)
     // Note: 'late' riders are NOT double-added below; isLate() handles the late counter.
-    if (st === 'working')  stats.working++;
-    else if (st === 'starting') stats.starting++;
+    if (st === 'working' || st === 'ending')  stats.working++;
+    else if (st === 'starting' || st === 'dtstus_starting') stats.starting++;
     else if (st === 'break')    stats.break++;
     else if (st === 'offline')  stats.offline++;
     // riders with status==='late' are not counted in the above buckets —
@@ -645,7 +647,7 @@ function computeStatsFromRiders(riders) {
     const hasOrd = hasActiveOrder(r);
     if (hasOrd) {
       stats.withOrders++;
-    } else if (['working', 'starting', 'late'].includes(st)) {
+    } else if (['working', 'starting', 'late', 'ending', 'dtstus_starting'].includes(st)) {
       stats.withoutOrders++;
     }
 
@@ -665,12 +667,12 @@ function computeStatsFromRiders(riders) {
     }
     const pg = stats.byPoint[ptName];
     pg.total++;
-    if (st === 'working')       pg.working++;
-    else if (st === 'starting') pg.starting++;
+    if (st === 'working' || st === 'ending')       pg.working++;
+    else if (st === 'starting' || st === 'dtstus_starting') pg.starting++;
     else if (st === 'break')    pg.break++;
     if (isLate(r)) pg.late++;
     if (hasOrd) pg.withOrders++;
-    else if (['working','starting','late'].includes(st)) pg.withoutOrders++;
+    else if (['working','starting','late','ending','dtstus_starting'].includes(st)) pg.withoutOrders++;
 
     const vIcon = r.vehicle?.icon || 'Unknown';
     stats.vehicles[vIcon] = (stats.vehicles[vIcon] || 0) + 1;
@@ -695,7 +697,7 @@ function renderCompanyStats(stats) {
   // "يعمل / بداية" card shows working + starting (late riders shown separately)
   setText('cp-checkedIn',      stats.working + stats.starting);
   setText('cp-checkedInLate',  stats.late);
-  setText('cp-notCheckedIn',   stats.offline);
+  setText('cp-withoutOrders',  stats.withoutOrders);
   setText('cp-onBreak',        stats.break);
   setText('cp-ordersAccepted', stats.ordersAccepted);
   setText('cp-ordersDeclined', stats.ordersDeclined || 0);
@@ -1245,27 +1247,72 @@ function updateNavButtons() {
 
 // ── BACKGROUND JOB ─────────────────────────────────────
 
+function shouldSendRider(rider) {
+  const reason = rider.status_metadata?.reason;
+
+  // ❌ لو logout → تجاهل
+  if (reason === "Issue::CourierLogoutFromAllDevices") {
+    return false;
+  }
+
+  return true;
+}
+
 async function sendRiderStatsJob() {
   if (!allRiders || !allRiders.length || !currentCompanyId) return;
 
-  // Use today's local device date in YYYY-MM-DD
   const today = new Date().toLocaleDateString('en-CA');
+  const nowMs = Date.now();
 
-  const payload = allRiders.map(r => ({
-    riderId: String(r.employee_id || ''),
-    riderName: String(r.name || ''),
-    companyId: String(currentCompanyId),
-    date: today,
-    wallet: r.wallet_info?.balance || 0,
-    orders: r.deliveries_info?.completed_deliveries_count || 0,
-    workingHours: (r.performance?.time_spent?.worked_seconds || 0) / 3600
-  }));
+  const payload = allRiders
+    .filter(shouldSendRider)
+    .map(r => {
+      let workedSeconds = r.performance?.time_spent?.worked_seconds || 0;
+
+      // ✅ FIX: If rider is currently on break, the API's worked_seconds
+      // may still be counting. Freeze it by subtracting the ongoing break
+      // duration that hasn't been closed yet.
+      // The API gives us break_seconds (completed breaks only).
+      // worked_seconds = total_elapsed - completed_breaks
+      // But the CURRENT break hasn't been subtracted yet.
+      // So we subtract: total_elapsed - worked_seconds - break_seconds
+      // which equals the ongoing active break duration.
+      if (r.status === 'break') {
+        const shiftStartMs = r.active_shift_started_at
+          ? new Date(r.active_shift_started_at).getTime()
+          : null;
+
+        if (shiftStartMs) {
+          const totalElapsed    = Math.floor((nowMs - shiftStartMs) / 1000);
+          const completedBreaks = r.performance?.time_spent?.break_seconds || 0;
+          const ongoingBreak    = totalElapsed - workedSeconds - completedBreaks;
+
+          if (ongoingBreak > 0) {
+            workedSeconds = Math.max(0, workedSeconds - ongoingBreak);
+          }
+        }
+      }
+
+      return {
+        riderId:      String(r.employee_id || ''),
+        riderName:    String(r.name || ''),
+        companyId:    String(currentCompanyId),
+        date:         today,
+        wallet:       r.wallet_info?.balance || 0,
+        orders:       r.deliveries_info?.completed_deliveries_count || 0,
+        workingHours: workedSeconds / 3600
+      };
+    });
+
+  if (!payload.length) return;
+
+  console.log('Sending rider stats to backend:', payload);
 
   try {
     await fetch('https://express-extension-manager.premiumasp.net/api/rider-stats', {
-      method: 'PUT',
+      method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      body:    JSON.stringify(payload)
     });
   } catch (e) {
     console.warn('sendRiderStatsJob error:', e);
