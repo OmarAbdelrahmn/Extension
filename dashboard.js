@@ -1293,6 +1293,10 @@ async function sendRiderStatsJob() {
         }
       }
 
+      const midnightMs = new Date(new Date().setHours(0, 0, 0, 0)).getTime();
+      const secondsSinceMidnight = Math.max(0, (nowMs - midnightMs) / 1000);
+      const todayWorkedSeconds = Math.min(workedSeconds, secondsSinceMidnight);
+
       return {
         riderId:      String(r.employee_id || ''),
         riderName:    String(r.name || ''),
@@ -1300,7 +1304,7 @@ async function sendRiderStatsJob() {
         date:         today,
         wallet:       r.wallet_info?.balance || 0,
         orders:       r.deliveries_info?.completed_deliveries_count || 0,
-        workingHours: workedSeconds / 3600
+        workingHours: todayWorkedSeconds / 3600
       };
     });
 
