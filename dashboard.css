@@ -1257,3 +1257,167 @@ html, body {
 .toast-error   { background: var(--red-dim);   color: var(--red);   border: 1px solid #991b1b; }
 .toast-success { background: var(--green-dim); color: var(--green); border: 1px solid #166534; }
 .toast-info    { background: var(--bg-card2);  color: var(--amber); border: 1px solid var(--amber-dim); }
+
+/* ─────────────────── البدلاء — SUBSTITUTES PAGE ─────────────────── */
+
+.subs-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  padding: 20px;
+  align-content: start;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.sub-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+  animation: fadeInUp 0.2s ease both;
+  box-shadow: var(--shadow-card);
+}
+.sub-card:hover {
+  border-color: var(--amber-dim);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+.sub-card-overridden {
+  border-color: #166534;
+  background: linear-gradient(135deg, var(--bg-surface), #0d200d);
+}
+
+.sub-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sub-rider-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+}
+
+.sub-badge-custom {
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--green-dim);
+  color: var(--green);
+  border-radius: 99px;
+  padding: 2px 8px;
+}
+.sub-badge-original {
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--bg-card2);
+  color: var(--text-muted);
+  border-radius: 99px;
+  padding: 2px 8px;
+}
+
+.sub-name-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.sub-name-label {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+.sub-name-original {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-family: var(--font-main);
+  direction: rtl;
+}
+.sub-name-display {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--green);
+  font-family: var(--font-main);
+  direction: rtl;
+  min-height: 20px;
+}
+
+.sub-input-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+}
+.sub-input {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 7px 10px;
+  color: var(--text-primary);
+  font-family: var(--font-main);
+  font-size: 13px;
+  direction: rtl;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.sub-input:focus {
+  border-color: var(--amber);
+  box-shadow: 0 0 0 2px var(--amber-glow);
+}
+.sub-input::placeholder { color: var(--text-muted); }
+
+.sub-btn-save {
+  padding: 7px 14px;
+  background: var(--amber-dim);
+  border: 1px solid var(--amber-dim);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  font-family: var(--font-main);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.sub-btn-save:hover { background: var(--amber); border-color: var(--amber); }
+.sub-btn-save:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.sub-btn-clear {
+  padding: 7px 10px;
+  background: var(--red-dim);
+  border: 1px solid var(--red-dim);
+  border-radius: var(--radius-sm);
+  color: var(--red);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.sub-btn-clear:hover { background: var(--red); color: #fff; }
+
+/* light-theme overrides */
+[data-theme="light"] .sub-card { background: var(--bg-surface); }
+[data-theme="light"] .sub-card-overridden { background: #f0fdf4; border-color: #86efac; }
+[data-theme="light"] .sub-card:hover { border-color: var(--amber-dim); }
+[data-theme="light"] .sub-input { background: var(--bg-card2); }
+[data-theme="light"] .sub-badge-custom { background: #dcfce7; color: #15803d; }
+[data-theme="light"] .sub-badge-original { background: #f1f5f9; color: #64748b; }
+[data-theme="light"] .sub-name-display { color: #15803d; }
+[data-theme="light"] .sub-btn-save { background: var(--amber); border-color: var(--amber-dim); color: #fff; }
+[data-theme="light"] .sub-btn-save:hover { background: var(--amber-dim); }
+[data-theme="light"] .sub-btn-clear { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }
+[data-theme="light"] .sub-btn-clear:hover { background: #fca5a5; color: #fff; }

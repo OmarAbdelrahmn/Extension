@@ -132,6 +132,9 @@ let currentLang     = localStorage.getItem('dash_lang')  || 'ar';
 let currentTheme    = localStorage.getItem('dash_theme') || 'dark';
 let historyRawData  = null;
 let historySearchQuery = '';
+let riderNamesCache = {};   // riderId (string) → overrideName (string|null)
+let subsSearchQuery = '';
+let subsRawData     = [];   // raw from GET /api/rider-names/{companyId}
 
 // ── TRANSLATIONS ───────────────────────────────────────
 const STRINGS = {
@@ -220,6 +223,19 @@ const STRINGS = {
     hist_col_hours: 'ساعات العمل',
     hist_col_status: 'الحالة المباشرة',
     hist_not_working: 'لا يعمل حالياً',
+    nav_substitutes: '🔁 البدلاء',
+    substitutes_title: '🔁 البدلاء — إدارة الأسماء',
+    substitutes_sub: 'تخصيص الاسم المعروض لكل سائق عبر التطبيق بالكامل',
+    substitutes_total: 'إجمالي السائقين:',
+    substitutes_overridden: 'لديهم اسم مخصص:',
+    sub_edit_placeholder: 'أدخل اسماً مخصصاً...',
+    sub_save: 'حفظ',
+    sub_clear: 'مسح',
+    sub_saved: 'تم حفظ الاسم بنجاح',
+    sub_cleared: 'تم مسح الاسم المخصص',
+    sub_error: 'فشل حفظ الاسم',
+    sub_original_name: 'الاسم الأصلي',
+    sub_custom_name: 'الاسم المخصص',
   },
   en: {
     status_working:'Working', status_starting:'Starting', dtstus_starting:'Starting', status_ending:'Ending', status_break:'On Break',
@@ -306,6 +322,19 @@ const STRINGS = {
     hist_col_hours: 'Working Hours',
     hist_col_status: 'Live Status',
     hist_not_working: 'Not Working',
+    nav_substitutes: '🔁 Substitutes',
+    substitutes_title: '🔁 Substitutes — Name Management',
+    substitutes_sub: 'Customize the display name for each rider across the entire app',
+    substitutes_total: 'Total Riders:',
+    substitutes_overridden: 'Custom Name Set:',
+    sub_edit_placeholder: 'Enter a custom name...',
+    sub_save: 'Save',
+    sub_clear: 'Clear',
+    sub_saved: 'Name saved successfully',
+    sub_cleared: 'Custom name cleared',
+    sub_error: 'Failed to save name',
+    sub_original_name: 'Original Name',
+    sub_custom_name: 'Custom Name',
   }
 };
 
@@ -458,6 +487,18 @@ function cleanName(name) {
   return name.replace(/\*\d+\*/g, '').trim() || name.trim();
 }
 
+/**
+ * Global name resolver. Returns the overrideName from the cache if set,
+ * otherwise falls back to cleanName(rider.name) from RiderStat.
+ * Use this EVERYWHERE a rider name is displayed.
+ */
+function getRiderDisplayName(rider) {
+  if (!rider) return '—';
+  const id = String(rider.employee_id ?? '');
+  const override = riderNamesCache[id];
+  return (override && override.trim()) ? override.trim() : cleanName(rider.name);
+}
+
 function avatarClass(name) {
   if (!name) return 'av-4';
   return `av-${name.charCodeAt(0) % 5}`;
@@ -605,6 +646,50 @@ async function fetchRiderShifts(id) {
   const end   = new Date(ms + 14 * 86_400_000).toISOString();
   const qs = new URLSearchParams({ city_id: currentCityEntry.city_id, start_at: start, end_at: end });
   return apiFetch(`${API}/rooster/v3/employees/${id}/shifts?${qs}`);
+}
+
+// ── RIDER NAMES API (البدلاء) ─────────────────────────
+
+const RIDER_NAMES_API = 'https://express-extension-manager.premiumasp.net/api/rider-names';
+
+/** POST sync — register all current rider IDs (new ones get added, existing ignored) */
+async function syncRiderIds(companyId, riderIds) {
+  if (!companyId || !riderIds || !riderIds.length) return;
+  try {
+    await fetch(`${RIDER_NAMES_API}/${companyId}/sync`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(riderIds),
+    });
+  } catch (e) {
+    console.warn('syncRiderIds error:', e);
+  }
+}
+
+/** GET all rider name overrides for this company */
+async function fetchRiderNames(companyId) {
+  if (!companyId) return [];
+  const res = await fetch(`${RIDER_NAMES_API}/${companyId}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+/** PUT — set/update the display name for one rider */
+async function putRiderName(companyId, riderId, overrideName) {
+  const res = await fetch(`${RIDER_NAMES_API}/${companyId}/${riderId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ overrideName }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+/** Rebuild the in-memory cache from the raw names array */
+function buildRiderNamesCache(namesList) {
+  riderNamesCache = {};
+  (namesList || []).forEach(entry => {
+    riderNamesCache[String(entry.riderId)] = entry.overrideName || null;
+  });
 }
 
 // ── STATS FROM RIDERS ──────────────────────────────────
@@ -766,6 +851,7 @@ function buildRiderCard(rider) {
   const avCls    = avatarClass(rider.name);
   const delivs   = rider.deliveries_info?.completed_deliveries_count || 0;
   const isSelected = rider.employee_id === selectedRiderId;
+  const displayName = getRiderDisplayName(rider);
 
   const card = document.createElement('div');
   card.className = `rider-card${late ? ' late-card' : ''}${isSelected ? ' selected' : ''}`;
@@ -778,7 +864,7 @@ function buildRiderCard(rider) {
     ${late ? '<div class="late-indicator"></div>' : ''}
     <div class="rider-avatar ${avCls}">${avatarInitial(rider.name)}</div>
     <div class="rider-card-info">
-      <div class="rider-card-name">${cleanName(rider.name)} <span style="font-size:11px;color:var(--text-muted);font-weight:normal">#${rider.employee_id}</span></div>
+      <div class="rider-card-name">${displayName} <span style="font-size:11px;color:var(--text-muted);font-weight:normal">#${rider.employee_id}</span></div>
       <div class="rider-card-sub">${rider.starting_point?.name || '—'} · ${rider.phone_number || '—'}</div>
     </div>
     <div class="rider-card-meta">
@@ -886,6 +972,19 @@ async function loadRiders(silent = false) {
   try {
     allRiders = await fetchRiders();
 
+    // مزامنة المعرفات وتحديث ذاكرة التخصيص
+    if (currentCompanyId && allRiders.length) {
+      const ids = allRiders.map(r => String(r.employee_id));
+      syncRiderIds(currentCompanyId, ids); // fire-and-forget — adds new IDs only
+      try {
+        const namesList = await fetchRiderNames(currentCompanyId);
+        subsRawData = namesList;
+        buildRiderNamesCache(namesList);
+      } catch (e) {
+        console.warn('fetchRiderNames error:', e);
+      }
+    }
+
     if (Object.keys(previousStatuses).length > 0) {
       let statusChanged = false;
       allRiders.forEach(r => {
@@ -987,7 +1086,7 @@ function renderRiderHeader(rider) {
   av.textContent = avatarInitial(rider.name);
   av.className   = `detail-avatar ${avCls}`;
 
-  setText('detailName', `${cleanName(rider.name)} (#${rider.employee_id})`);
+  setText('detailName', `${getRiderDisplayName(rider)} (#${rider.employee_id})`);
 
   const badge = document.getElementById('detailStatusBadge');
   badge.textContent = t(`status_${status}`) || status;
@@ -1183,8 +1282,9 @@ function renderGroupByPoint() {
           .map(r => {
             const late2  = isLate(r);
             const hasOrd = hasActiveOrder(r);
-            return `<span class="pg-rider-chip ${late2 ? 'chip-late' : ''}" title="${cleanName(r.name)}">
-              ${hasOrd ? '🟢' : '⚪'} ${cleanName(r.name).split(' ')[0]}
+            const dispN  = getRiderDisplayName(r);
+            return `<span class="pg-rider-chip ${late2 ? 'chip-late' : ''}" title="${dispN}">
+              ${hasOrd ? '🟢' : '⚪'} ${dispN.split(' ')[0]}
             </span>`;
           }).join('')}
       </div>
@@ -1199,7 +1299,8 @@ function showWalletPage() {
   document.getElementById('dashboardPage').style.display = 'none';
   document.getElementById('walletPage').style.display    = 'flex';
   document.getElementById('mapPage').style.display       = 'none';
-  if (document.getElementById('historyPage')) document.getElementById('historyPage').style.display = 'none';
+  if (document.getElementById('historyPage'))    document.getElementById('historyPage').style.display    = 'none';
+  if (document.getElementById('substitutesPage')) document.getElementById('substitutesPage').style.display = 'none';
   renderWalletReport();
   updateNavButtons();
 }
@@ -1209,7 +1310,8 @@ function showDashboardPage() {
   document.getElementById('dashboardPage').style.display = 'flex';
   document.getElementById('walletPage').style.display    = 'none';
   document.getElementById('mapPage').style.display       = 'none';
-  if (document.getElementById('historyPage')) document.getElementById('historyPage').style.display = 'none';
+  if (document.getElementById('historyPage'))    document.getElementById('historyPage').style.display    = 'none';
+  if (document.getElementById('substitutesPage')) document.getElementById('substitutesPage').style.display = 'none';
   updateNavButtons();
 }
 
@@ -1218,7 +1320,8 @@ function showMapPage() {
   document.getElementById('dashboardPage').style.display = 'none';
   document.getElementById('walletPage').style.display    = 'none';
   document.getElementById('mapPage').style.display       = 'flex';
-  if (document.getElementById('historyPage')) document.getElementById('historyPage').style.display = 'none';
+  if (document.getElementById('historyPage'))    document.getElementById('historyPage').style.display    = 'none';
+  if (document.getElementById('substitutesPage')) document.getElementById('substitutesPage').style.display = 'none';
   updateNavButtons();
   requestAnimationFrame(() => requestAnimationFrame(() => initMap()));
 }
@@ -1228,15 +1331,26 @@ function showHistoryPage() {
   document.getElementById('dashboardPage').style.display = 'none';
   document.getElementById('walletPage').style.display    = 'none';
   document.getElementById('mapPage').style.display       = 'none';
-  if (document.getElementById('historyPage')) document.getElementById('historyPage').style.display = 'flex';
+  if (document.getElementById('historyPage'))    document.getElementById('historyPage').style.display    = 'flex';
+  if (document.getElementById('substitutesPage')) document.getElementById('substitutesPage').style.display = 'none';
   updateNavButtons();
-  
+
   if (!document.getElementById('historyDateInput').value) {
-    // 'en-CA' always formats local time as YYYY-MM-DD
     document.getElementById('historyDateInput').value = new Date().toLocaleDateString('en-CA');
   }
-  
+
   loadHistoryStats();
+}
+
+function showSubstitutesPage() {
+  currentPage = 'substitutes';
+  document.getElementById('dashboardPage').style.display  = 'none';
+  document.getElementById('walletPage').style.display     = 'none';
+  document.getElementById('mapPage').style.display        = 'none';
+  if (document.getElementById('historyPage'))    document.getElementById('historyPage').style.display    = 'none';
+  if (document.getElementById('substitutesPage')) document.getElementById('substitutesPage').style.display = 'flex';
+  updateNavButtons();
+  loadSubstitutesPage();
 }
 
 function updateNavButtons() {
@@ -1393,10 +1507,11 @@ function renderHistoryReport() {
       }
     }
 
+    const histDisplayName = riderNamesCache[String(r.riderId)] || r.riderName || '—';
     return `
     <tr>
       <td>${i + 1}</td>
-      <td style="font-family:var(--font-main);font-weight:600">${r.riderName || '—'}</td>
+      <td style="font-family:var(--font-main);font-weight:600">${histDisplayName}</td>
       <td style="font-family:var(--font-mono)">${r.riderId || '—'}</td>
       <td style="color:var(--amber);font-weight:700">${r.orders || 0}</td>
       <td style="color:var(--green);font-weight:700">${(r.wallet || 0).toFixed(2)} ${t('currency')}</td>
@@ -1445,8 +1560,9 @@ function downloadHistoryExcel() {
       }
     }
 
+    const exportName = riderNamesCache[String(r.riderId)] || r.riderName || '';
     return [
-      i + 1, r.riderName || '', r.riderId || '',
+      i + 1, exportName, r.riderId || '',
       r.orders || 0, (r.wallet || 0).toFixed(2),
       (r.workingHours || 0).toFixed(2), statusLabel
     ].map(v => `"${String(v).replace(/"/g, '""')}"`).join(',');
@@ -1491,7 +1607,7 @@ function renderWalletReport() {
     return `
       <tr class="${statusClass}">
         <td>${i + 1}</td>
-        <td style="font-family:var(--font-main);font-weight:600">${cleanName(r.name)}</td>
+        <td style="font-family:var(--font-main);font-weight:600">${getRiderDisplayName(r)}</td>
         <td style="font-family:var(--font-mono);color:var(--text-muted)">${r.phone_number || '—'}</td>
         <td style="font-family:var(--font-main);color:var(--text-secondary)">${r.starting_point?.name || '—'}</td>
         <td style="font-family:var(--font-mono);font-weight:700;color:${balColor}">${bal !== undefined ? bal.toFixed(2) : '—'} ${t('currency')}</td>
@@ -1526,7 +1642,7 @@ function downloadWalletExcel() {
     const bal = wal.balance;
     const ws  = walletStatus(wal.limit_status, bal);
     return [
-      i + 1, cleanName(r.name), r.phone_number || '',
+      i + 1, getRiderDisplayName(r), r.phone_number || '',
       r.starting_point?.name || '',
       bal !== undefined ? bal.toFixed(2) : '',
       ws.text, r.employee_id,
@@ -1688,7 +1804,7 @@ function buildMap(mapEl) {
 
     const popupContent = `
       <div dir="${currentLang === 'ar' ? 'rtl' : 'ltr'}" style="font-family:Cairo,sans-serif;min-width:200px">
-        <strong style="font-size:14px">${cleanName(rider.name)}</strong><br>
+        <strong style="font-size:14px">${getRiderDisplayName(rider)}</strong><br>
         <span style="color:#94a3b8;font-size:12px">${rider.starting_point?.name || '—'}</span><br>
         <span style="color:${color};font-weight:700">${hasOrd ? '🟢 ' + t('map_with_orders') : '⚪ ' + t('map_without_orders')}</span><br>
         <span style="font-size:11px;color:#64748b">
@@ -1707,6 +1823,155 @@ function buildMap(mapEl) {
       const group = L.featureGroup(mapMarkers);
       leafletMap.fitBounds(group.getBounds().pad(0.1));
     } catch (_) {}
+  }
+}
+
+// ── البدلاء PAGE LOGIC ───────────────────────────
+
+async function loadSubstitutesPage() {
+  const grid    = document.getElementById('subsGrid');
+  const loading = document.getElementById('subsLoadingState');
+  if (!grid || !loading) return;
+
+  if (!currentCompanyId) {
+    loading.style.display = 'flex';
+    grid.style.display    = 'none';
+    loading.innerHTML     = `<p style="color:var(--text-muted)">انتظر تحميل البيانات أولاً...</p>`;
+    return;
+  }
+
+  loading.style.display = 'flex';
+  loading.innerHTML     = `<div class="spinner"></div><p>${t('loading')}</p>`;
+  grid.style.display    = 'none';
+
+  try {
+    const namesList = await fetchRiderNames(currentCompanyId);
+    subsRawData = namesList;
+    buildRiderNamesCache(namesList);
+    renderSubstitutesGrid();
+  } catch (e) {
+    console.warn('loadSubstitutesPage error:', e);
+    loading.innerHTML = `<p style="color:var(--red)">فشل تحميل البيانات</p>`;
+  }
+}
+
+function renderSubstitutesGrid() {
+  const grid    = document.getElementById('subsGrid');
+  const loading = document.getElementById('subsLoadingState');
+  if (!grid) return;
+
+  loading.style.display = 'none';
+  grid.style.display    = 'grid';
+
+  let entries = subsRawData || [];
+
+  if (subsSearchQuery) {
+    const q = subsSearchQuery.toLowerCase();
+    entries = entries.filter(e =>
+      String(e.riderId).toLowerCase().includes(q) ||
+      (e.overrideName || '').toLowerCase().includes(q) ||
+      (() => {
+        const live = allRiders.find(r => String(r.employee_id) === String(e.riderId));
+        return live ? cleanName(live.name).toLowerCase().includes(q) : false;
+      })()
+    );
+  }
+
+  const overriddenCount = (subsRawData || []).filter(e => e.overrideName).length;
+  setText('sub-total',      subsRawData.length);
+  setText('sub-overridden', overriddenCount);
+
+  if (!entries.length) {
+    grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--text-muted);">${t('no_data')}</div>`;
+    return;
+  }
+
+  grid.innerHTML = entries.map(entry => {
+    const liveRider   = allRiders.find(r => String(r.employee_id) === String(entry.riderId));
+    const originalName = liveRider ? cleanName(liveRider.name) : `#${entry.riderId}`;
+    const currentOverride = entry.overrideName || '';
+    const hasOverride = !!currentOverride;
+    const safeId = String(entry.riderId).replace(/[^a-zA-Z0-9_-]/g, '_');
+
+    return `
+      <div class="sub-card ${hasOverride ? 'sub-card-overridden' : ''}" id="subcard-${safeId}">
+        <div class="sub-card-header">
+          <div class="sub-rider-id">#${entry.riderId}</div>
+          ${hasOverride ? '<span class="sub-badge-custom">✅ مخصص</span>' : '<span class="sub-badge-original">أصلي</span>'}
+        </div>
+        <div class="sub-name-row">
+          <div class="sub-name-label">${t('sub_original_name')}</div>
+          <div class="sub-name-original">${originalName}</div>
+        </div>
+        <div class="sub-name-row">
+          <div class="sub-name-label">${t('sub_custom_name')}</div>
+          <div class="sub-name-display">${hasOverride ? currentOverride : '<span style="color:var(--text-muted);font-style:italic">— لا يوجد —</span>'}</div>
+        </div>
+        <div class="sub-input-row">
+          <input
+            type="text"
+            class="sub-input"
+            id="subinput-${safeId}"
+            placeholder="${t('sub_edit_placeholder')}"
+            value="${currentOverride.replace(/"/g, '&quot;')}"
+          />
+          <button class="sub-btn-save" data-action="save" data-rider-id="${entry.riderId}" data-safe-id="${safeId}">${t('sub_save')}</button>
+          ${hasOverride ? `<button class="sub-btn-clear" data-action="clear" data-rider-id="${entry.riderId}" data-safe-id="${safeId}">&#10005;</button>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+  // Listeners handled by the permanent delegated handler on subsGrid (see DOMContentLoaded)
+}
+
+function _subsGridClickHandler(e) {
+  const btn = e.target.closest('[data-action]');
+  if (!btn) return;
+  const riderId = btn.dataset.riderId;
+  const safeId  = btn.dataset.safeId;
+  if (btn.dataset.action === 'save')  _doSubSave(riderId, safeId);
+  if (btn.dataset.action === 'clear') _doSubClear(riderId, safeId);
+}
+
+async function _doSubSave(riderId, safeId) {
+  const input = document.getElementById(`subinput-${safeId}`);
+  if (!input) return;
+  const newName = input.value.trim();
+  if (!newName) { toast(t('sub_error') + ': الاسم فارغ', 'error'); return; }
+  if (!currentCompanyId) { toast(t('sub_error'), 'error'); return; }
+
+  const btn = input.nextElementSibling;
+  if (btn) { btn.disabled = true; btn.textContent = '...'; }
+
+  try {
+    await putRiderName(currentCompanyId, riderId, newName);
+    riderNamesCache[String(riderId)] = newName;
+    const entry = (subsRawData || []).find(e => String(e.riderId) === String(riderId));
+    if (entry) entry.overrideName = newName;
+    else subsRawData.push({ riderId, companyId: currentCompanyId, overrideName: newName });
+    toast(t('sub_saved'), 'success');
+    renderSubstitutesGrid();
+    applyFiltersAndSort();
+  } catch (e) {
+    console.warn('_doSubSave error:', e);
+    toast(t('sub_error'), 'error');
+    if (btn) { btn.disabled = false; btn.textContent = t('sub_save'); }
+  }
+}
+
+async function _doSubClear(riderId, safeId) {
+  if (!currentCompanyId) { toast(t('sub_error'), 'error'); return; }
+  try {
+    await putRiderName(currentCompanyId, riderId, '');
+    riderNamesCache[String(riderId)] = null;
+    const entry = (subsRawData || []).find(e => String(e.riderId) === String(riderId));
+    if (entry) entry.overrideName = null;
+    toast(t('sub_cleared'), 'info');
+    renderSubstitutesGrid();
+    applyFiltersAndSort();
+  } catch (e) {
+    console.warn('_doSubClear error:', e);
+    toast(t('sub_error'), 'error');
   }
 }
 
@@ -1836,6 +2101,22 @@ document.addEventListener('DOMContentLoaded', () => {
   if (document.getElementById('navHistory')) {
     document.getElementById('navHistory').addEventListener('click', showHistoryPage);
   }
+  if (document.getElementById('navSubstitutes')) {
+    document.getElementById('navSubstitutes').addEventListener('click', showSubstitutesPage);
+  }
+  if (document.getElementById('btnRefreshSubs')) {
+    document.getElementById('btnRefreshSubs').addEventListener('click', loadSubstitutesPage);
+  }
+  if (document.getElementById('subsSearchInput')) {
+    document.getElementById('subsSearchInput').addEventListener('input', e => {
+      subsSearchQuery = e.target.value.trim();
+      renderSubstitutesGrid();
+    });
+  }
+
+  // Permanent delegated listener for البدلاء grid buttons (survives re-renders)
+  const subsGrid = document.getElementById('subsGrid');
+  if (subsGrid) subsGrid.addEventListener('click', _subsGridClickHandler);
   if (document.getElementById('btnRefreshHistory')) {
     document.getElementById('btnRefreshHistory').addEventListener('click', loadHistoryStats);
   }
