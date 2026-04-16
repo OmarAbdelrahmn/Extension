@@ -1708,27 +1708,18 @@ function loadLeafletThenInit(mapEl) {
   const localCss = chrome?.runtime?.getURL
     ? chrome.runtime.getURL('libs/leaflet.css')
     : 'libs/leaflet.css';
-  const cdnJs    = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-  const cdnCss   = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
 
-  // Inject CSS (local first)
+  // Inject CSS (local only)
   const link = document.createElement('link');
   link.rel   = 'stylesheet';
   link.href  = localCss;
-  link.onerror = () => { link.href = cdnCss; };
   document.head.appendChild(link);
 
-  // Inject JS (local first, CDN fallback)
+  // Inject JS (local only)
   const script    = document.createElement('script');
   script.src      = localJs;
   script.onload   = () => buildMap(mapEl);
-  script.onerror  = () => {
-    const s2   = document.createElement('script');
-    s2.src     = cdnJs;
-    s2.onload  = () => buildMap(mapEl);
-    s2.onerror = () => showMapError(mapEl);
-    document.head.appendChild(s2);
-  };
+  script.onerror  = () => showMapError(mapEl);
   document.head.appendChild(script);
 }
 
