@@ -1,10 +1,12 @@
 {
   "manifest_version": 3,
   "name": "Hunger Dashboard - لوحة تحكم هنقر",
-  "version": "2.0.1",
+  "version": "2.0.3",
   "description": "أداة شاملة لإدارة أسطول هنقر تتيح التتبع المباشر للسائقين والطلبات، وإدارة المحافظ، مع إمكانيات متقدمة لحفظ البيانات وتصدير تقرير.",
   "permissions": [
     "cookies",
+    "tabs",
+    "scripting",
     "declarativeNetRequest",
     "declarativeNetRequestWithHostAccess"
   ],
@@ -12,6 +14,16 @@
     "https://sa.me.logisticsbackoffice.com/*",
     "https://express-extension-manager.premiumasp.net/*",
     "https://dhlogisticsauth.cloudflareaccess.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://sa.me.logisticsbackoffice.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
   ],
   "declarative_net_request": {
     "rule_resources": [
@@ -25,14 +37,14 @@
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
-      "16": "icons/icon16.png",
-      "48": "icons/icon48.png",
+      "16":  "icons/icon16.png",
+      "48":  "icons/icon48.png",
       "128": "icons/icon128.png"
     }
   },
   "icons": {
-    "16": "icons/icon16.png",
-    "48": "icons/icon48.png",
+    "16":  "icons/icon16.png",
+    "48":  "icons/icon48.png",
     "128": "icons/icon128.png"
   },
   "web_accessible_resources": [

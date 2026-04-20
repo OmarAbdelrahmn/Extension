@@ -622,20 +622,33 @@ function getCookieValue(name) {
 }
 
 async function apiFetch(url) {
-  const res = await fetch(url, { credentials: 'include' });
-
-  // Cloudflare Access redirects to HTML login page when session expires
-  const contentType = res.headers.get('content-type') || '';
-  if (!res.ok || contentType.includes('text/html')) {
-    // Check if it's a CF redirect (status 200 but HTML body = CF login page)
-    if (contentType.includes('text/html')) {
-      throw new CfAuthError('Cloudflare session expired — please log in to the website first');
-    }
-    throw new Error(`HTTP ${res.status} — ${url}`);
-  }
-
-  return res.json();
+  return new Promise((resolve, reject) => {
+    chrome.runtime.sendMessage({ type: 'API_FETCH', url }, response => {
+      if (chrome.runtime.lastError) {
+        reject(new Error(chrome.runtime.lastError.message));
+        return;
+      }
+      if (!response) {
+        reject(new Error('No response from background worker'));
+        return;
+      }
+      if (response.error === 'CF_AUTH') {
+        reject(new CfAuthError('Cloudflare session expired — please log in to the website first'));
+        return;
+      }
+      if (response.error === 'NO_TAB') {
+        reject(new Error('افتح الموقع https://sa.me.logisticsbackoffice.com أولاً ثم حاول مجدداً'));
+        return;
+      }
+      if (response.error) {
+        reject(new Error(`${response.error} — ${url}`));
+        return;
+      }
+      resolve(response.data);
+    });
+  });
 }
+ 
 
 class CfAuthError extends Error {
   constructor(msg) { super(msg); this.name = 'CfAuthError'; }
@@ -654,7 +667,7 @@ async function fetchRiders() {
   } catch (_) {}
 
   const data = await apiFetch(
-    `${API}/rider-live-operations/v1/external/city/${currentCityEntry.city_id}/riders?page=0&size=100`
+    `${API}/rider-live-operations/v1/external/city/${currentCityEntry.city_id}/riders?page=0&size=10`
   );
   return data.content || [];
 }

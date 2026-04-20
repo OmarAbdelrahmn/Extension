@@ -5,13 +5,14 @@
     "action": {
       "type": "modifyHeaders",
       "requestHeaders": [
-        { "header": "Origin", "operation": "set", "value": "https://sa.me.logisticsbackoffice.com" },
+        { "header": "Origin",  "operation": "set", "value": "https://sa.me.logisticsbackoffice.com" },
         { "header": "Referer", "operation": "set", "value": "https://sa.me.logisticsbackoffice.com/dashboard/rooster/live-3pl" }
       ]
     },
     "condition": {
       "urlFilter": "|https://sa.me.logisticsbackoffice.com/api/*",
-      "resourceTypes": ["xmlhttprequest"]
+      "resourceTypes": ["xmlhttprequest"],
+      "excludedInitiatorDomains": ["sa.me.logisticsbackoffice.com"]
     }
   }
 ]
