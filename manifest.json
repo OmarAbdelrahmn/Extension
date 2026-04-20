@@ -3,11 +3,26 @@
   "name": "Hunger Dashboard - لوحة تحكم هنقر",
   "version": "2.0.1",
   "description": "أداة شاملة لإدارة أسطول هنقر تتيح التتبع المباشر للسائقين والطلبات، وإدارة المحافظ، مع إمكانيات متقدمة لحفظ البيانات وتصدير تقرير.",
-  "permissions": [],
+  "permissions": [
+    "cookies",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess"
+  ],
   "host_permissions": [
     "https://sa.me.logisticsbackoffice.com/*",
-    "https://express-extension-manager.premiumasp.net/*"
+    "https://express-extension-manager.premiumasp.net/*",
+    "https://dhlogisticsauth.cloudflareaccess.com/*",
+    "https://eu-client.fwf.deliveryhero.net/*"
   ],
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  },
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

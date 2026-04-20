@@ -607,10 +607,38 @@ function setText(id, val) {
 
 // ── API CALLS ──────────────────────────────────────────
 
+// A helper to get a cookie value
+function getCookieValue(name) {
+  return new Promise((resolve) => {
+    if (chrome && chrome.cookies) {
+      chrome.cookies.get({ url: 'https://sa.me.logisticsbackoffice.com', name }, (cookie) => {
+        resolve(cookie ? cookie.value : null);
+      });
+    } else {
+      console.error("chrome.cookies API not available.");
+      resolve(null);
+    }
+  });
+}
+
 async function apiFetch(url) {
   const res = await fetch(url, { credentials: 'include' });
-  if (!res.ok) throw new Error(`HTTP ${res.status} — ${url}`);
+
+  // Cloudflare Access redirects to HTML login page when session expires
+  const contentType = res.headers.get('content-type') || '';
+  if (!res.ok || contentType.includes('text/html')) {
+    // Check if it's a CF redirect (status 200 but HTML body = CF login page)
+    if (contentType.includes('text/html')) {
+      throw new CfAuthError('Cloudflare session expired — please log in to the website first');
+    }
+    throw new Error(`HTTP ${res.status} — ${url}`);
+  }
+
   return res.json();
+}
+
+class CfAuthError extends Error {
+  constructor(msg) { super(msg); this.name = 'CfAuthError'; }
 }
 
 async function fetchCityCompanyStats() {
@@ -630,10 +658,28 @@ async function fetchRiders() {
     // Non-fatal: company ID stays as previously fetched (or null)
   }
 
-  const data = await apiFetch(
-    `${API}/rider-live-operations/v1/external/city/${currentCityEntry.city_id}/riders?page=0&size=100`
-  );
-  return data.content || [];
+  let allRiders = [];
+  let page = 0;
+  const size = 20; // Modified to 10 as strict WAF or API pagination limits may reject 100 with a 403
+
+  // New paginated response structure requires looping to fetch all riders
+  while (true) {
+    const data = await apiFetch(
+      `${API}/rider-live-operations/v1/external/city/${currentCityEntry.city_id}/riders?page=${page}&size=${size}`
+    );
+    const content = data.content || [];
+    allRiders.push(...content);
+
+    // Stop fetching if we've reached the last page or it's empty
+    if (data.is_last || content.length === 0 || data.total_pages === undefined || page >= (data.total_pages - 1)) {
+      break;
+    }
+    page++;
+    
+    // Failsafe to prevent excessive loops (e.g. max 50 pages = 5000 riders)
+    if (page >= 50) break;
+  }
+  return allRiders;
 }
 
 async function fetchRiderDetails(id) {
@@ -1017,13 +1063,21 @@ async function loadRiders(silent = false) {
     if (allRiders.length > 0 && currentCompanyId) {
       setTimeout(() => sendRiderStatsJob(), 2000);
     }
-  } catch (err) {
+} catch (err) {
     console.error('loadRiders:', err);
     if (!silent) {
+      const isCfError = err instanceof CfAuthError;
       document.getElementById('riderList').innerHTML = `
-        <div class="no-data">${t('load_fail')}<br><small>${err.message}</small><br><br>
-        <small>${t('login_hint')}</small></div>`;
-      toast(t('toast_fail'), 'error');
+        <div class="no-data">
+          ${isCfError
+            ? `🔐 <b>انتهت جلسة Cloudflare</b><br>
+               <small>افتح <a href="https://sa.me.logisticsbackoffice.com" target="_blank" 
+               style="color:var(--amber)">الموقع</a> وسجّل الدخول، ثم حدّث اللوحة.</small>`
+            : `${t('load_fail')}<br><small>${err.message}</small><br><br>
+               <small>${t('login_hint')}</small>`
+          }
+        </div>`;
+      toast(isCfError ? '🔐 جلسة Cloudflare منتهية' : t('toast_fail'), 'error', 8000);
     }
   } finally {
     isLoading = false;
