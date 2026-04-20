@@ -647,40 +647,41 @@ async function fetchCityCompanyStats() {
 }
 
 async function fetchRiders() {
-  // First pull the company stats to get company_id dynamically
   try {
     const cityStats = await fetchCityCompanyStats();
     const companies = cityStats.company_stats || [];
-    if (companies.length > 0) {
-      currentCompanyId = companies[0].company_id;
-    }
-  } catch (_) {
-    // Non-fatal: company ID stays as previously fetched (or null)
-  }
+    if (companies.length > 0) currentCompanyId = companies[0].company_id;
+  } catch (_) {}
 
-  let allRiders = [];
-  let page = 0;
-  const size = 20; // Modified to 10 as strict WAF or API pagination limits may reject 100 with a 403
-
-  // New paginated response structure requires looping to fetch all riders
-  while (true) {
-    const data = await apiFetch(
-      `${API}/rider-live-operations/v1/external/city/${currentCityEntry.city_id}/riders?page=${page}&size=${size}`
-    );
-    const content = data.content || [];
-    allRiders.push(...content);
-
-    // Stop fetching if we've reached the last page or it's empty
-    if (data.is_last || content.length === 0 || data.total_pages === undefined || page >= (data.total_pages - 1)) {
-      break;
-    }
-    page++;
-    
-    // Failsafe to prevent excessive loops (e.g. max 50 pages = 5000 riders)
-    if (page >= 50) break;
-  }
-  return allRiders;
+  const data = await apiFetch(
+    `${API}/rider-live-operations/v1/external/city/${currentCityEntry.city_id}/riders?page=0&size=100`
+  );
+  return data.content || [];
 }
+
+//   let allRiders = [];
+//   let page = 0;
+//   const size = 20; // Modified to 10 as strict WAF or API pagination limits may reject 100 with a 403
+
+//   // New paginated response structure requires looping to fetch all riders
+//   while (true) {
+//     const data = await apiFetch(
+//       `${API}/rider-live-operations/v1/external/city/${currentCityEntry.city_id}/riders?page=${page}&size=${size}`
+//     );
+//     const content = data.content || [];
+//     allRiders.push(...content);
+
+//     // Stop fetching if we've reached the last page or it's empty
+//     if (data.is_last || content.length === 0 || data.total_pages === undefined || page >= (data.total_pages - 1)) {
+//       break;
+//     }
+//     page++;
+    
+//     // Failsafe to prevent excessive loops (e.g. max 50 pages = 5000 riders)
+//     if (page >= 50) break;
+//   }
+//   return allRiders;
+// }
 
 async function fetchRiderDetails(id) {
   return apiFetch(`${API}/rider-live-operations/v2/external/rider/${id}`);

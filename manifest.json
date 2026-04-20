@@ -11,8 +11,7 @@
   "host_permissions": [
     "https://sa.me.logisticsbackoffice.com/*",
     "https://express-extension-manager.premiumasp.net/*",
-    "https://dhlogisticsauth.cloudflareaccess.com/*",
-    "https://eu-client.fwf.deliveryhero.net/*"
+    "https://dhlogisticsauth.cloudflareaccess.com/*"
   ],
   "declarative_net_request": {
     "rule_resources": [
