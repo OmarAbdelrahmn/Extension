@@ -667,7 +667,7 @@ async function fetchRiders() {
   } catch (_) {}
 
   const data = await apiFetch(
-    `${API}/rider-live-operations/v1/external/city/${currentCityEntry.city_id}/riders?page=0&size=40`
+    `${API}/rider-live-operations/v1/external/city/${currentCityEntry.city_id}/riders?page=0&size=99`
   );
   return data.content || [];
 }
