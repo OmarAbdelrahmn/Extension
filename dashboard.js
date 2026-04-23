@@ -236,6 +236,13 @@ const STRINGS = {
     sub_error: 'فشل حفظ الاسم',
     sub_original_name: 'الاسم الأصلي',
     sub_custom_name: 'الاسم المخصص',
+    sub_import_btn: 'استيراد Excel',
+    sub_importing: 'جارٍ الاستيراد...',
+    sub_import_ok: 'تم الاستيراد بنجاح — معالَج: {processed} | جديد: {inserted} | محدَّث: {updated}',
+    sub_import_err: 'فشل الاستيراد',
+    sub_import_no_file: 'لم يتم اختيار ملف',
+    sub_import_no_company: 'لم يتم تحديد الشركة بعد، انتظر تحميل البيانات أولاً',
+    sub_example_btn: 'مثال',
   },
   en: {
     status_working:'Working', status_starting:'Starting', dtstus_starting:'Starting', status_ending:'Ending', status_break:'On Break',
@@ -335,6 +342,13 @@ const STRINGS = {
     sub_error: 'Failed to save name',
     sub_original_name: 'Original Name',
     sub_custom_name: 'Custom Name',
+    sub_import_btn: 'Import Excel',
+    sub_importing: 'Importing...',
+    sub_import_ok: 'Import done — processed: {processed} | inserted: {inserted} | updated: {updated}',
+    sub_import_err: 'Import failed',
+    sub_import_no_file: 'No file selected',
+    sub_import_no_company: 'Company not loaded yet, please wait and try again',
+    sub_example_btn: 'Example',
   }
 };
 
@@ -2039,6 +2053,104 @@ async function _doSubClear(riderId, safeId) {
   }
 }
 
+// ── BULK EXCEL IMPORT (البدلاء) ───────────────────────
+
+/**
+ * Sends the selected .xlsx file to POST /api/rider-names/{companyId}/import
+ * and refreshes the grid on success.
+ */
+async function importRiderNamesFromExcel(file) {
+  if (!file) { toast(t('sub_import_no_file'), 'error'); return; }
+  if (!currentCompanyId) { toast(t('sub_import_no_company'), 'error'); return; }
+
+  const btn = document.getElementById('btnImportSubs');
+  const originalLabel = btn ? btn.innerHTML : '';
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = `<span>${t('sub_importing')}</span>`;
+  }
+
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const res = await fetch(
+      `${RIDER_NAMES_API}/${currentCompanyId}/import`,
+      { method: 'POST', body: formData }
+      // Do NOT set Content-Type — browser sets it with the correct boundary
+    );
+
+    let body;
+    try { body = await res.json(); } catch (_) { body = {}; }
+
+    if (!res.ok) {
+      const msg = body.error || `HTTP ${res.status}`;
+      toast(`${t('sub_import_err')}: ${msg}`, 'error', 5000);
+      return;
+    }
+
+    const { processed = 0, inserted = 0, updated = 0 } = body;
+    const okMsg = t('sub_import_ok')
+      .replace('{processed}', processed)
+      .replace('{inserted}',  inserted)
+      .replace('{updated}',   updated);
+    toast(okMsg, 'success', 6000);
+
+    // Reload the names list and rebuild the cache + grid
+    await loadSubstitutesPage();
+    // Also reflect name changes in the live rider list
+    applyFiltersAndSort();
+
+  } catch (e) {
+    console.warn('importRiderNamesFromExcel error:', e);
+    toast(`${t('sub_import_err')}: ${e.message}`, 'error', 5000);
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = originalLabel;
+    }
+    // Reset file input so the same file can be re-selected if needed
+    const fileInput = document.getElementById('subsImportFileInput');
+    if (fileInput) fileInput.value = '';
+  }
+}
+
+// ── DOWNLOAD EXAMPLE CSV ──────────────────────────────
+
+/**
+ * Generates and downloads a two-column CSV that shows the exact
+ * format expected by POST /api/rider-names/{companyId}/import.
+ *
+ * Column A = WorkingId  (must match the RiderId stored in the system)
+ * Column B = Name       (the override display name)
+ * Row 1    = header (skipped by the server)
+ * Rows 2+  = example data rows
+ *
+ * The file is built entirely in JS — no server round-trip needed.
+ * Excel opens .csv files natively, so no SheetJS dependency required.
+ */
+function downloadSubsExample() {
+  const rows = [
+    ['WorkingId', 'Name'],        // row 1 — header (server skips this)
+    ['rider-001', 'Ahmed'],       // row 2 — example data
+    ['rider-002', 'Mohammed'],    // row 3
+    ['rider-003', 'Sara'],        // row 4
+  ];
+
+  // Build CSV with UTF-8 BOM so Arabic characters render correctly in Excel
+  const BOM = '\uFEFF';
+  const csv = BOM + rows.map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(',')).join('\r\n');
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = 'rider-names-example.csv';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+}
+
 // ── AUTO REFRESH ───────────────────────────────────────
 
 function startAutoRefresh() {
@@ -2177,6 +2289,21 @@ document.addEventListener('DOMContentLoaded', () => {
       renderSubstitutesGrid();
     });
   }
+
+  // Bulk import: button opens file picker; file input triggers the upload
+  const btnImport    = document.getElementById('btnImportSubs');
+  const importInput  = document.getElementById('subsImportFileInput');
+  if (btnImport && importInput) {
+    btnImport.addEventListener('click', () => importInput.click());
+    importInput.addEventListener('change', () => {
+      const file = importInput.files && importInput.files[0];
+      if (file) importRiderNamesFromExcel(file);
+    });
+  }
+
+  // Download example CSV template
+  document.getElementById('btnDownloadSubsExample')
+    ?.addEventListener('click', downloadSubsExample);
 
   // Permanent delegated listener for البدلاء grid buttons (survives re-renders)
   const subsGrid = document.getElementById('subsGrid');

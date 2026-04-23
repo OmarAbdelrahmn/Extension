@@ -685,6 +685,23 @@
           </svg>
           <span data-i18n="history_refresh">تحديث</span>
         </button>
+        <!-- hidden file input for bulk Excel import -->
+        <input type="file" id="subsImportFileInput" accept=".xlsx" style="display:none;">
+        <button class="btn-export" id="btnImportSubs" style="background:var(--bg-surface);border:1px solid var(--border);gap:4px;" title="استيراد الأسماء من Excel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <span data-i18n="sub_import_btn">استيراد Excel</span>
+        </button>
+        <!-- download example template -->
+        <button class="btn-export" id="btnDownloadSubsExample" style="background:transparent;border:1px dashed var(--border);color:var(--text-muted);gap:4px;" title="تحميل مثال Excel">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <span data-i18n="sub_example_btn">مثال</span>
+        </button>
       </div>
     </div>
 
