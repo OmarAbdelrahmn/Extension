@@ -1444,10 +1444,8 @@ function updateNavButtons() {
 // ── BACKGROUND JOB ─────────────────────────────────────
 
 function shouldSendRider(rider) {
-  const reason = rider.status_metadata?.reason;
-
   // ❌ لو logout → تجاهل
-  if (reason === "Issue::CourierLogoutFromAllDevices") {
+  if (rider.status === "break") {
     return false;
   }
 
