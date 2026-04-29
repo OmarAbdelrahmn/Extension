@@ -1443,71 +1443,23 @@ function updateNavButtons() {
 
 // ── BACKGROUND JOB ─────────────────────────────────────
 
-function shouldSendRider(rider) {
-  // ❌ لو logout → تجاهل
-  if (rider.status === "break") {
-    return false;
-  }
-
-  return true;
-}
 async function sendRiderStatsJob() {
   if (!allRiders || !allRiders.length || !currentCompanyId) return;
 
-  const nowMs = Date.now();
-
-  // ── UTC+3 (Saudi Arabia) safe date & midnight ──────────────
-  // Shift "now" into UTC+3 space so date boundaries are correct
-  const UTC3_OFFSET_MS = 3 * 60 * 60 * 1000;
-  const nowInUTC3       = new Date(nowMs + UTC3_OFFSET_MS);
-
-  // today's date string in UTC+3  (e.g. "2026-04-22")
-  const today = nowInUTC3.toISOString().slice(0, 10);
-
-  // midnight UTC+3 expressed as a UTC timestamp
-  const midnightUTC3Ms  = Date.UTC(
-    nowInUTC3.getUTCFullYear(),
-    nowInUTC3.getUTCMonth(),
-    nowInUTC3.getUTCDate(),
-    0, 0, 0, 0
-  ) - UTC3_OFFSET_MS;
-
-  const secondsSinceMidnight = Math.max(0, (nowMs - midnightUTC3Ms) / 1000);
-  // ───────────────────────────────────────────────────────────
-
   const payload = allRiders
-    .filter(shouldSendRider)
-    .map(r => {
-      let workedSeconds = r.performance?.time_spent?.worked_seconds || 0;
-
-      if (r.status === 'break') {
-        const shiftStartMs = r.active_shift_started_at
-          ? new Date(r.active_shift_started_at).getTime()
-          : null;
-
-        if (shiftStartMs) {
-          const totalElapsed    = Math.floor((nowMs - shiftStartMs) / 1000);
-          const completedBreaks = r.performance?.time_spent?.break_seconds || 0;
-          const ongoingBreak    = totalElapsed - workedSeconds - completedBreaks;
-          if (ongoingBreak > 0) {
-            workedSeconds = Math.max(0, workedSeconds - ongoingBreak);
-          }
-        }
-      }
-
-      // Cap to seconds elapsed since UTC+3 midnight (today only)
-      const todayWorkedSeconds = Math.min(workedSeconds, secondsSinceMidnight);
-
-      return {
-        riderId:      String(r.employee_id || ''),
-        riderName:    String(r.name || ''),
-        companyId:    String(currentCompanyId),
-        date:         today,
-        wallet:       r.wallet_info?.balance || 0,
-        orders:       r.deliveries_info?.completed_deliveries_count || 0,
-        workingHours: todayWorkedSeconds / 3600
-      };
-    });
+    .filter(r => r.status !== 'offline')
+    .map(r => ({
+      riderId:             String(r.employee_id || ''),
+      riderName:           String(r.name || ''),
+      companyId:           String(currentCompanyId),
+      status:              r.status || 'offline',
+      activeShiftStartedAt: r.active_shift_started_at || null,
+      activeShiftEndedAt:   r.active_shift_ended_at   || null,
+      wallet:              r.wallet_info?.balance ?? 0,
+      orders:              r.deliveries_info?.completed_deliveries_count ?? 0,
+      workedSeconds:       r.performance?.time_spent?.worked_seconds ?? 0,
+      breakSeconds:        r.performance?.time_spent?.break_seconds  ?? 0,
+    }));
 
   if (!payload.length) return;
 
