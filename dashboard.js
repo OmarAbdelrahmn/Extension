@@ -1446,31 +1446,44 @@ function updateNavButtons() {
 async function sendRiderStatsJob() {
   if (!allRiders || !allRiders.length || !currentCompanyId) return;
 
+  function toUtcString(ts) {
+    if (!ts) return null;
+    if (ts.endsWith('Z') || ts.includes('+') || ts.includes('-', 10)) return ts;
+    return ts + 'Z';
+  }
+
   const payload = allRiders
-    .filter(r => r.status !== 'offline')
+    .filter(r => effectiveStatus(r) !== 'offline')
     .map(r => ({
-      riderId:             String(r.employee_id || ''),
-      riderName:           String(r.name || ''),
-      companyId:           String(currentCompanyId),
-      status:              r.status || 'offline',
-      activeShiftStartedAt: r.active_shift_started_at || null,
-      activeShiftEndedAt:   r.active_shift_ended_at   || null,
-      wallet:              r.wallet_info?.balance ?? 0,
-      orders:              r.deliveries_info?.completed_deliveries_count ?? 0,
-      workedSeconds:       r.performance?.time_spent?.worked_seconds ?? 0,
-      breakSeconds:        r.performance?.time_spent?.break_seconds  ?? 0,
+      riderId:              String(r.employee_id || ''),
+      riderName:            String(r.name || ''),
+      companyId:            String(currentCompanyId),
+      status:               effectiveStatus(r),
+      activeShiftStartedAt: toUtcString(r.active_shift_started_at),
+      activeShiftEndedAt:   toUtcString(r.active_shift_ended_at),
+      wallet:               r.wallet_info?.balance ?? 0,
+      orders:               r.deliveries_info?.completed_deliveries_count ?? 0,
+      workedSeconds:        r.performance?.time_spent?.worked_seconds ?? 0,
+      breakSeconds:         r.performance?.time_spent?.break_seconds  ?? 0,
     }));
 
   if (!payload.length) return;
 
   try {
-    await fetch('https://express-extension-manager.premiumasp.net/api/rider-stats', {
+    const res = await fetch('https://express-extension-manager.premiumasp.net/api/rider-stats', {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(payload)
+      body:    JSON.stringify(payload),
     });
+
+    if (!res.ok) {
+      const body = await res.text();
+      console.error(`sendRiderStatsJob failed: HTTP ${res.status}`, body);
+    } else {
+      console.log(`sendRiderStatsJob OK — sent ${payload.length} riders`);
+    }
   } catch (e) {
-    console.warn('sendRiderStatsJob error:', e);
+    console.warn('sendRiderStatsJob network error:', e);
   }
 }
 
